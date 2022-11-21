@@ -1,1 +1,6 @@
-
+IF "<Wimp$ScrapDir>"="" THEN Error Wimp$ScrapDir not set
+Set gzip$path %.,<gzip$Dir>.
+CDir <6502Em$TempDir>
+Filer_OpenDir <6502Em$TempDir>
+WimpSlot -min 450k -max 450k
+BASIC -QUIT <Obey$Dir>.!RunImage %*0
