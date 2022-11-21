@@ -1,1 +1,11 @@
+Each directory Socket0-15 must contain either ~~~RAM or ~~~ROM which determine
+whether the corresponding socket is RAM or ROM.
 
+You may also put a ROM image in one of the directories to automatically load
+it into that socket number when 6502Em is run.
+
+VDFS is in socket 13 by default.
+
+Socket 15 is ingored in all modes (will contain BASIC or Terminal).
+Sockets 15,14,12,11,10,9 are ignored in Master 128 mode.
+Sockets 15 & 14 are ignored in Master Compact mode.
