@@ -1,6 +1,5 @@
 # BBC Key       RISC OS Keys
-]		#
-f0		Print
+f0		Print	Escape
 f1		f1
 f2		f2
 f3		f3
@@ -10,7 +9,7 @@ f6		f6
 f7		f7
 f8		f8
 f9		f9
-Escape		Escape
+Escape		`
 1		1
 2		2
 3		3
@@ -23,7 +22,7 @@ Escape		Escape
 0		0
 -		-
 ^		=
-\		\
+\		£
 Tab		Tab
 Q		Q
 W		W
@@ -35,9 +34,9 @@ U		U
 I		I
 O		O
 P		P
-#@		[
-[		[
-_		£	`
+@		[
+[		]
+_		\
 CapsLock	CapsLock
 Ctrl		LCtrl	LAlt
 A		A
@@ -51,7 +50,7 @@ K		K
 L		L
 ;		;
 :		'
-]		]
+]		RAlt	RCtrl
 Return		Return
 #ShiftLock
 Shift		RShift	LShift
@@ -73,37 +72,30 @@ Down		Down
 Left		Left
 Right		Right
 # Master Keys
-K+		K+
-K-		K-
-K/		K/
-K*		K*
+K+		NumLock
+K-		K/
+K/		K*
+K*		K#
 K7		K7
 K8		K8
 K9		K9
-K#		K#
+K#		K-
 K4		K4
 K5		K5
 K6		K6
-KDelete		K.
+KDelete		K+
 K1		K1
 K2		K2
 K3		K3
-K,		NumLock
+#K,		?????
 K0		K0
 K.		K.
 KReturn		Enter
-# Shifted keys
-s6		7
-s:		8
-s8		9
-s9		0
-s@		'
-s^		#
-s;		=
 #RiscPC (lines after this ignored on pre-RISC OS 3.5 machines
 CapsLock	LCtrl
 Ctrl		CapsLock	LAlt
 #This line does the key to the left of the return key
+]		\
 _		RAlt	RCtrl
 K*		K-
 K#		K+

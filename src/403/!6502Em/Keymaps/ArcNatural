@@ -1,5 +1,4 @@
 # BBC Key       RISC OS Keys
-]		#
 f0		Print
 f1		f1
 f2		f2
@@ -93,17 +92,19 @@ K0		K0
 K.		K.
 KReturn		Enter
 # Shifted keys
+s@		2
 s6		7
 s:		8
 s8		9
 s9		0
-s@		'
-s^		#
+s2		'
+s^		`
 s;		=
 #RiscPC (lines after this ignored on pre-RISC OS 3.5 machines
 CapsLock	LCtrl
 Ctrl		CapsLock	LAlt
 #This line does the key to the left of the return key
+]		\
 _		RAlt	RCtrl
 K*		K-
 K#		K+
