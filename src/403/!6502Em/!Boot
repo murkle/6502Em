@@ -1,0 +1,11 @@
+Set 6502Em$Dir <Obey$Dir>
+Set 6502Em$Res <6502Em$Dir>.Resources
+If "<Alias$@RunType_BBC>"="" Then Set Alias$@RunType_BBC Run <6502Em$Dir>.!Run %%*0
+Set File$Type_BBC BBCSnap
+Set File$Type_B22 DFSImage
+Set 6502Em$Sprites !Sprites
+If "<Boot$OSVersion>">499 Then Set 6502Em$Sprites 5Sprites
+IconSprites <6502Em$Res>.<6502Em$Sprites>
+RMEnsure DOSFS 0.00 Obey
+DOSMap UEF BBC
+DOSMap SSD B22
