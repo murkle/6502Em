@@ -1,0 +1,150 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+
+<html>
+
+ <head>
+
+  <title>
+   Murklesoft: Software for Windows and RISC OS
+  </title> 
+
+  <meta name="description" content="Murklesoft has writing software since 1995">
+
+  <meta name="keywords" content="Borcherds, emulators, dynamic, gemoetry, 6502Em, Z80Em,
+              6502, Z80, Cabriolet, minesweep, winclip">
+
+  <meta http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+
+ </head>
+
+ <body background="background.gif">
+
+  <p align=center>  
+   <font size="+3"><b>Murklesoft</b></font><br>
+   <font size="+2"><b><i>Software for Windows and RISC OS</i></b></font>
+  </p>
+
+  <hr style="color: #CC9933">
+
+  <table>
+   <tr>
+
+    <td valign="top" width=450>
+     <a href="/murklesoft/index.html">Home</a><br>
+     Software for Windows<br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/windows/cabriolet.html">Cabriolet Dynamic Geometry</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/windows/pairs.html">Pairs</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/windows/tsunami.html">Tsunami/Griddler Solver</a><br>
+     Software for RISC OS<br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/cabriolet.html">Cabriolet Dynamic Geometry</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/6502em.html">6502Em</a><br>
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="iyonix.html">Iyonix</a><br>
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="history.html">History</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="keylayout.html">KeyLayout</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="6502em/keys.html">Keys</a><br>
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="6502em/menus.html">Menus</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="6502em/opcode07.html">Opcode07</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="6502em/ripdfs.html">RipDFSDisc</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="6502em/roms.html">ROMs</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="6502em/scripts.html">Scripts</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="/snaps.html">Snapshots</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="superior.html">Superior</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="technical.html">Technical</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="trouble.html">Trouble</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="virtualdfs.html">VirtualDFS</a><br> 
+
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/Z80em.html">Z80Em</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/winclip.html">WinClip</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/minesweep.html">Minesweep</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/misc.html">Miscellaneous</a><br>
+     Software for Linux<br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/linux/cabriolet.html">Cabriolet Dynamic Geometry</a><br>
+     Software for Newton<br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/newton/cabriolet.html">Cabriolet Dynamic Geometry</a><br>
+     <a href="/murklesoft/pricelist.html">Pricelist</a><br>
+     <a href="/murklesoft/contact.html">Contact</a><br>
+     <a href="/murklesoft/links.html">Links</a>
+    </td>
+
+    <td valign="top">
+     <p align=center><font size="+2"><b><i>6502Em</i></b></font></p>
+     <p align=center><img src="/murklesoft/riscos/exile.gif" alt="man from Exile"></p>  
+
+<p>If you are using an Iyonix, you may need to install a suitable
+640x500 mode so that MODE 7 works. You also need to have a working MODE 21 (640x512).
+
+<p>Here are a couple of 640x512 modes and the corresponding modified
+640x500 modes. You can either use these or modify a 640x512 of
+your own similarly.
+
+<pre>
+# 640 x 512 (60Hz)
+startmode
+mode_name:640 x 512
+x_res:640
+y_res:512
+pixel_rate:32000
+h_timings:64,76,30,640,30,30
+v_timings:3,16,40,512,40,4
+sync_pol:3
+endmode
+
+# 640 x 500 (60Hz)
+startmode
+mode_name:640 x 500
+x_res:640
+y_res:500
+pixel_rate:32000
+h_timings:64,76,36,640,36,30
+v_timings:3,16,40,500,40,4
+sync_pol:3
+endmode
+
+# 640 x 512 (70Hz)
+startmode
+mode_name:640 x 512
+x_res:640
+y_res:512
+pixel_rate:37500
+h_timings:64,76,30,640,30,30
+v_timings:3,16,40,512,40,4
+sync_pol:3
+endmode
+
+# 640 x 500 (70Hz)
+startmode
+mode_name:640 x 500
+x_res:640
+y_res:500
+pixel_rate:37500
+h_timings:64,76,36,640,36,30
+v_timings:3,16,40,500,40,4
+sync_pol:3
+endmode
+
+</pre>
+
+    <td width=15>
+    </td>
+
+   </tr>
+  </table>
+
+  <p align=right>
+   <font size="-2">
+    <font color="#CC9933">
+     ______________________________________________________<br>
+    </font>
+    <a href="/murklesoft/contact.html">Murklesoft</a>: Software for Windows and RISC OS<br>
+    <a href="http://www.borcherds.co.uk/murklesoft/">www.borcherds.co.uk/murklesoft/</a>
+   </font>
+  </p>
+
+  <p align=right>
+   <a href="http://validator.w3.org/check/referer"><img border="0"
+    src="valid-html40.gif" alt="Valid HTML 4.0!" height="31" width="88"></a>
+  </p>
+
+ </body>
+
+</html>

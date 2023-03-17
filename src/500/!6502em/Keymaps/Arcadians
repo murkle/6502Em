@@ -1,0 +1,94 @@
+# BBC Key       RISC OS Keys
+f0		Print	Escape
+f1		f1
+f2		f2
+f3		f3
+f4		f4
+f5		f5
+f6		f6
+f7		f7
+f8		f8
+f9		f9
+Escape		`
+1		1
+2		2
+3		3
+4		4
+5		5
+6		6
+7		7
+8		8
+9		9
+0		0
+-		-
+^		=
+\		£
+Tab		Tab
+Q		Q
+W		W
+E		E
+R		R
+T		T
+Y		Y
+U		U
+I		I
+O		O
+P		P
+@		[
+[		]
+_		\
+CapsLock	CapsLock	A
+Ctrl		LCtrl	LAlt	S
+#A		A
+#S		S
+D		D
+F		F
+G		G
+H		H
+J		J
+K		K
+L		L
+;		;
+:		'
+]		RAlt	RCtrl
+Return		Return
+#ShiftLock
+Shift		RShift	LShift
+Z		Z
+X		X
+C		C
+V		V
+B		B
+N		N
+M		M
+,		,
+.		.
+/		/
+Delete		Delete  <-|
+Copy		Copy
+Space		Space
+Up		Up
+Down		Down
+Left		Left
+Right		Right
+# Master Keys
+K+		NumLock
+K-		K/
+K/		K*
+K*		K#
+K7		K7
+K8		K8
+K9		K9
+K#		K-
+K4		K4
+K5		K5
+K6		K6
+KDelete		K+
+K1		K1
+K2		K2
+K3		K3
+#K,		?????
+K0		K0
+K.		K.
+KReturn		Enter
+# end
