@@ -1,0 +1,52 @@
+ImageDFS v0.90 read only, problems file         © Stephen Harrison, 1996-2014
+-----------------------------------------------------------------------------
+
+This file lists some solutions to possible problems you may encounter with
+ImageDFS.
+
+
+Problem : Double-clicking a DFS file from the desktop causes internal error.
+Cause(s): You are trying to run a BBC-only program from the RiscOS desktop.
+Solution: Try using the !6502em BBC emulator to load this file, it will
+          run almost all BBC programs perfectly.
+
+Problem : You can't save a file to a DFS disc/image.
+Cause(s): ImageDFS v0.90 is read only, so you cannot save to DFS discs.
+Solution: Try contacting the author to see whether a read/write
+          version of ImageDFS will become available.
+
+Problem : Clicking on 5¼" disc drive icon, with DFS disc in, returns error.
+Cause(s): 1) ImageDFS module is not loaded or has been removed,
+          2) External drive is switched off,
+          3) 5¼" drive is not connected to computer correctly.
+Solution: 1) Re-load ImageDFS.
+          2) If you have an externally powered 5¼" drive check it is plugged
+             in and switched on.
+          3) (Common problem) check you have the correct leads for the drive,
+             to test if it works properly, try formatting an ADFS 5¼" disc to
+             ADFS 640K. If this works the drive is ok.
+
+Problem : Double-clicking, or loading a DFS file causes a disc error.
+Cause(s): 1) The 5¼" drive is not set to 80 tracks,
+          2) You are trying to load a 40 track copy-protected disc which
+             ImageDFS thinks is 80 tracks.
+Solution: 1) Switch the disc drive to 80 track mode and try again.
+          2) Select the '40 track only' option from ImageDFS's options window
+             - see ReadMe file for more information.
+
+Problem : Typing *DRIVE 0, then *. in the BBC emulator does not access the
+          correct DFS disc.
+Cause(s): 1) You are not using !6502em, or have an old version (before v1.60),
+          2) The DFS / ADFS drive mapping is wrong,
+          3) The ImageDFS module is not loaded or has been removed.
+Solution: 1) Upgrade to the latest version of !6502em available from
+             www.brocherds.co.uk
+          2) See the second half of the ReadMe file for details on how to
+             correct the drive mapping for your computer setup.
+          3) Re-load ImageDFS.
+
+
+If you have any problems with ImageDFS, please contact the author
+giving full details of the problem, any error reported, and exactly what
+computer setup you are using. Everything possible will be done to get
+ImageDFS working on your computer.

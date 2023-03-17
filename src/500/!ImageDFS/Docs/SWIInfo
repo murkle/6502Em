@@ -1,0 +1,280 @@
+SWI list and information for ImageDFS v0.90     © Stephen Harrison, 1996-2014
+-----------------------------------------------------------------------------
+
+Acorn registered SWI base number &4CE40 and filetype &B22 used for ImageDFS.
+
+Format of SWI description is:
+
+ On entry: register values when calling SWI
+
+ On exit:  register values returned
+           (registers not mentioned are preserved)
+
+
+
+SWI ImageDFS_Version                                                   &4CE40
+-----------------------------------------------------------------------------
+
+On entry: -
+
+On exit : R0=DFS module version number*100
+
+This SWI can be used to check the version of ImageDFS loaded is the version
+expected by the program using ImageDFS.
+
+
+
+SWI ImageDFS_OSWORD7F                                                  &4CE41
+-----------------------------------------------------------------------------
+
+On entry: R1=X register for OSWORD &7F
+          R2=Y register for OSWORD &7F
+          R3=Base address of BBC memory block
+
+On exit:  -
+
+This SWI is used by the Warm Silence BBC emulator '6502em' to emulate OSWord
+&7F under RiscOS. The block pointed to by R1 and R2 (X and Y) + the base
+address in R3 contains data in the format expected for OSWord &7F on the BBC
+micro.
+
+All read operations are supported as for Acorn 1770 DFS, excluding the 'read
+track' command, which is specific to the 1770 controller and rarely used.
+
+You should not use this SWI in your own programs.
+
+
+
+SWI ImageDFS_DFSToADFSDrive                                            &4CE42
+-----------------------------------------------------------------------------
+
+On entry: R0=BBC drive number (0-3)
+
+On exit:  R0=RiscOS ADFS drive number
+
+This call translates a BBC drive number to a physical RiscOS ADFS drive
+number, as defined by SWI ImageDFS_MapADFSToDFSDrive.
+
+
+
+SWI ImageDFS_MapDFSToADFSDrive                                         &4CE43
+-----------------------------------------------------------------------------
+
+On entry: R0=DFS drive number 0 or 1 (nb. 2 and 3 are allowed, but treated as
+             0 or 1 respectively)
+          R1=ADFS drive number to map to DFS drive 0, 1, 2 or 3
+
+This call is used to inform Image DFS about which disc drive attached to the
+computer (ADFS drive) it should use when asked to access DFS drive 0 or 1 by
+the !6502em BBC emulator.
+
+The reason this call is needed is to enable an external 5¼" disc drive to be
+accessed as BBC drive 0, rather than the internal 3½" drive which is usually
+drive 0 on RiscOS machines. Note: this call will not affect the drive
+numbering on the desktop, or on the command line of your computer, it is only
+intended for use by the BBC emulator, and affects the Image DFS SWI's
+ImageDFS_OSWORD7F and ImageDFS_DFSToADFSDrive.
+
+Note: Both DFS drives (0 and 1) may be mapped to the same ADFS drive using
+this SWI, although this will be of little benefit to most users, and is not
+allowed by the !ImageDFS application.
+
+
+
+SWI ImageDFS_AddFiletypeMap                                            &4CE44
+-----------------------------------------------------------------------------
+
+On entry: R0=position in filetype map table to add this mapping
+              = 1 add as first in list
+              =>1 add at this position
+              = 0 add as last position in list
+
+          if bit 31 of R0 is set no new type is inserted but the data
+          overwrites the values for type at the given position
+
+          R1=DFS file load address mask
+          R2=DFS file load address
+          R3=DFS file exec address mask
+          R4=DFS file exec address
+          R5=RiscOS filetype number (0-&FFF)
+
+On exit:  R0=actual position of this mapping in list
+          other registers preserved
+
+This SWI adds a filetype mapping to the list of DFS->RiscOS filetype maps
+maintained by ImageDFS. Any DFS file matching the given load and exec
+addresses (only the bits specified in the masks are tested) is given the
+RiscOS filetype passed in R5. The operation also works in reverse, allowing
+RiscOS filetypes to be translated back to DFS load and exec addresses when
+writing to DFS discs.
+
+
+
+SWI ImageDFS_RemoveFiletypeMap                                         &4CE45
+-----------------------------------------------------------------------------
+
+On entry: R0=position in list of filetype to remove
+
+On exit:  -
+
+To remove a filetype map from ImageDFS's list, use this SWI with the position
+of the mapping to remove given in R0.
+
+
+
+SWI ImageDFS_ReadFiletypeMap                                           &4CE46
+-----------------------------------------------------------------------------
+
+On entry: R0=position in list of filetypes to read or -1 to read size
+
+On exit:  If R0>0 on entry, exit registers are:
+
+            R0 preserved
+            R1=DFS file load address mask
+            R2=DFS file load address
+            R3=DFS file exec address mask
+            R4=DFS file exec address
+            R5=RiscOS filetype number (0-&FFF)
+
+          If R0=-1 on entry, exit registers are:
+
+            R0=number of entries in filetype map
+            Other registers preserved
+
+This can be used to read the settings for a given filetype mapping in
+ImageDFS's list, and also to read the number of filetype maps held by
+ImageDFS.
+
+The first mapping is given position 1, the number of the last mapping can be
+read using R0=-1.
+
+
+
+SWI ImageDFS_Options                                                   &4CE47
+-----------------------------------------------------------------------------
+
+On entry: R0=mask of bits to change
+          R1=new state of bits
+
+On exit:  R0 preserved
+          R1=R0 AND entry value of R1
+          R2=old state of options word
+          R3=new state of options word
+
+This SWI sets up ImageDFS's configuration settings, it is also used by the
+desktop task for ImageDFS, to save and load the default options.
+
+The options word is laid out as:
+
+ bits 0   = disc detection method:      0 - RiscOS method (slow)
+                                        1 - Zero-retries (medium)
+*bit  1   = reserved for desktop program
+ bit  2   = set to force 40 track, single sided mode (for protected discs)
+*bit  3   = reserved for desktop program
+ bits 4,5 = type of catalogue to use on formatting:  00 - 31 file for DFS
+                                                          & 62 file for DDFS
+                                                     01 - 31 file always
+                                                     10 - 62 file always
+                                                     11 - reserved
+ bit  6   = set for use filetype translation
+ all other bits reserved for future expansion
+
+The reserved bits (1 and 3) are set by the !ImageDFS desktop task to:
+
+ bit  1   = Load ImageDFS module with high priority (for fast disc detection)
+ bit  3   = Don't load main desktop program
+ these bits are only acted on when the module is loaded by the desktop loader
+
+
+
+SWI ImageDFS_DiscFormat                                                &4CE48
+-----------------------------------------------------------------------------
+
+NB. This SWI returns an error in the read-only v0.90 of ImageDFS.
+
+
+On entry: R0=pointer to disc format structure block to be filled in
+          R1=SWI number used to vet format (eg. ADFS_VetFormat)
+          R2=parameter in R1 to use when calling vetting SWI
+          R3=format specifier
+
+On exit : R0-R3 preserved
+
+This SWI fills in the parameters for the specified DFS/DDFS format, these
+will differ slightly depending on whether ImageDFS is running on a computer
+using a 1772 disc controller, or the newer 82C710/711 controller. In the
+latter case, the format parameters are not 'perfect' due to limitations of
+the 82C710/711 controller, and this may cause the disc to be accessed slower
+than usual when verifying on this controller.
+
+In use this SWI is the same as it's DOSFS equivalent (apart from the format
+specifiers listed below), so for more details on this SWI's use, and the
+format structure block, see page 2-329 of the RiscOS 3 PRMs.
+
+ImageDFS format specifiers (R3 value on entry):
+
+  0 - DFS/A    100K   Acorn DFS   40 track   single sided
+  1 - DFS/B    200K   Acorn DFS   40 track   double sided
+  2 - DFS/C    200K   Acorn DFS   80 track   single sided
+  3 - DFS/D    400K   Acorn DFS   80 track   double sided
+  4 - DDFS/A   180K   Watford DDFS/Solidisk DDFS   40 track   single sided
+  5 - DDFS/B   360K   Watford DDFS/Solidisk DDFS   40 track   double sided
+  6 - DDFS/C   360K   Watford DDFS/Solidisk DDFS   80 track   single sided
+  7 - DDFS/D   720K   Watford DDFS/Solidisk DDFS   80 track   double sided
+
+
+
+SWI ImageDFS_LayoutStructure                                           &4CE49
+-----------------------------------------------------------------------------
+
+NB. This SWI returns an error in the read-only v0.90 of ImageDFS.
+
+
+On entry: R0=structure specifier
+          R1=(pointer to bad block list) must be pointer to &20000000 as
+             DFS/DDFS discs cannot map out defects.
+          R2=pointer to null terminated disc name (max. 12 characters)
+          R3=file handle of image
+
+On exit : R0-R3 preserved
+
+This SWI lays out in the specified image, all structures necessary to have a
+valid, empty disc.
+
+It can be used to lay out the structure onto a blank, formatted disc, in
+which case the file handle is the disc opened as a file. Or it can be used to
+layout a partition file (a DFS image file) into a file on a disc that is
+already formatted.
+
+The structure specifier in R0 takes the same values as the structures for
+ImageDFS_DiscFormat.
+
+
+
+SWI ImageDFS_EnteringEmulator                                          &4CE4A
+-----------------------------------------------------------------------------
+
+On entry: -
+
+On exit : -
+
+This SWI is called by the !6502em BBC emulator to set up
+ImageDFS for direct use by the emulator. This includes switching off DFS
+filetype mapping so BBC files load correctly in the emulator.
+
+You should not use this SWI in your own programs.
+
+
+
+SWI ImageDFS_LeavingEmulator                                           &4CE4B
+-----------------------------------------------------------------------------
+
+On entry: -
+
+On exit : -
+
+This SWI is called by the !6502em BBC emulator when it is returning to
+the desktop, so that the previous setup of ImageDFS can be restored.
+
+You should not use this SWI in your own programs.
+

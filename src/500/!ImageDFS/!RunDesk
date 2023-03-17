@@ -1,0 +1,5 @@
+|
+| !Run file for Image DFS v0.77 (desk) v0.71 (module)
+|
+WimpSlot -min 240K -max 240K
+Run <ImageDFS$Dir>.!RunImage

@@ -1,0 +1,5 @@
+|
+| !Help file for read-only Image DFS v0.71 (module)
+|
+Set ImageDFS$Dir <Obey$Dir>
+Filer_OpenDir <ImageDFS$Dir>.Docs

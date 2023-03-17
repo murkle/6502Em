@@ -1,0 +1,24 @@
+v0.90b BETA-TEST VERSION, NOT FOR PUBLIC RELEASE
+
+ImageDFS v0.90b read only, 32 bit compatible    © Stephen Harrison, 1996-2014
+-----------------------------------------------------------------------------
+
+This is the first RISC OS 5 compatible release of ImageDFS, the BBC Acorn DFS and Watford DDFS filing system for RISC OS. ImageDFS allows users to read '.ssd' and '.dsd' DFS and DDFS image files (filetype &B22) directly on the RISC OS desktop or through a BBC emulator, such as !6502em. ImageDFS also allows the user to access real Acorn DFS and Watford DDFS floppy discs on RISC OS computers fitted with a suitable 5.25" or 3.5" floppy disc drive (not USB).
+
+ImageDFS was originally released commercially by Warm Silence Software from 1996-2005. This version of ImageDFS is released as freeware by Pi-Star at www.pi-star.co.uk/imagedfs and may be distributed, providing it is not modified and is not sold for a profit.
+
+***** Many thanks to everyone who purchased the commercial version of  ***** ***** ImageDFS from Warm Silence Software, over the past 18 years!     *****
+***** (see below to transfer your registration number to this version) *****
+
+Other than modifications to work on modern 32 bit ARM processors, a few minor bug fixes and some changes to allow the ImageDFS to run correctly if an ADFS floppy disc drive is not present, this version of ImageDFS is identical to the last (commercial) release.
+
+This version of ImageDFS (v0.90b) is still read only, however significant progress was made on a read/write version over 10 years ago and I hope to be able to finalise this for release soon...
+
+If you enjoy using ImageDFS and would like to support the future development of this and other software by the author, you can make a contribution by PayPal to sah3000@yahoo.com. If you contribute £10, you can request a personal registered version of ImageDFS - just include your registration name or message of up to 28 characters (incl. spaces) and a return email address to receive the registered version.
+
+
+How to transfer your registration from a previous/commercial copy of !ImageDFS
+------------------------------------------------------------------------------
+If you have a previous registered version of ImageDFS and still have a copy of your registered version, you can transfer your registration / welcome message from your old copy of the applciation, by doing the following.
+
+Simply run the application !TransReg (within the new !ImageDFS application folder, shift+double-click !ImageDFS). You will need to have your old copy of !ImageDFS available (on harddisc or original floppy), follow the instructions and your registration will be transferred.

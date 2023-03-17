@@ -1,0 +1,6 @@
+Set ImageDFS$Dir <Obey$Dir>
+IconSprites <Obey$Dir>.!Sprites
+Set File$Type_B22 DFSImage
+Set Alias$@RunType_B22 Run <ImageDFS$Dir>.!Run %%*0
+Set BBCModelB$FS_4 <ImageDFS$Dir>.IDFSROM
+Set Alias$InitDFS Set TempIDFS$Dir |<FileSwitch$CurrentFilingSystem>:@

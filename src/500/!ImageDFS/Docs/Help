@@ -1,0 +1,344 @@
+v0.90b BETA-TEST VERSION, NOT FOR PUBLIC RELEASE
+
+ImageDFS v0.90b read only                       © Stephen Harrison, 1996-2014
+-----------------------------------------------------------------------------
+
+ImageDFS is an image filing system for RISC OS computers, enabling the
+computer to read BBC DFS and DDFS image '.ssd' and '.dsd' files and to access physical DFS or DDFS discs via a suitable 5¼" or 3.5" disc drive.
+
+The ImageDFS program is divided into two parts, the desktop part - which the
+user sees, and the module part - which talks to the operating system and
+carries out all the hard work required to actually read BBC discs. This help
+file covers the use of ImageDFS from the desktop, if you require more
+information about the programmers side to ImageDFS, see the 'SWIInfo' help
+file, or contact the author.
+
+
+Loading and using ImageDFS
+--------------------------
+
+After double-clicking the !ImageDFS icon, the Image DFS icon will appear on
+the left side of the icon bar, and the DFS filing system will become active.
+
+Once loaded ImageDFS allows access to BBC DFS disc 'Image' files, often called '.ssd' files or '.dsd' files on the internet. These are exact copies of DFS discs, stored in files (like archives), which can be kept on your hard disc or on normal floppy discs. To use these, they must be set to filetype &B22 on your RISC OS computer, then just double-click to open them. You do not need a 5¼" disc drive to use DFS image files with ImageDFS.
+
+Some DFS discs and images are double sided, any files found on the second
+side of the disc will appear in a directory called 'DFSSide2' which will be
+displayed in the filer window for the DFS disc.
+
+After you have seen that ImageDFS works you should be able to use it to copy
+files from DFS discs to your hard disc or to ADFS discs, but for most people
+the main use of ImageDFS will be with the BBC emulator.
+
+ImageDFS supports interactive-help, so to find out information about any part
+of the program while it is running, simply load !Help from the Apps
+directory, and move the pointer ImageDFS's window.
+
+
+Using ImageDFS with a physical floppy disc drive
+------------------------------------------------
+
+ImageDFS also allows your computer to access real BBC DFS discs, providing you have a suitable floppy disc drive attached. These discs can be accessed as if they are normal ADFS discs, by clicking on the usual desktop disc drive icon. If a DFS disc is in the drive, its window should appear on the desktop as usual, although you may notice most of the filenames appear in capital letters.
+
+Once ImageDFS is loaded, you can insert a DFS disc into your computer's 5¼" or 3.5" disc drive, and open its filer window by clicking on the appropriate disc
+drive icon. If nothing seems to happen, or an error is reported, try taking a
+look at the 'Problems' help file.
+
+If you intend to use ImageDFS to read BBC 5¼" discs you will need an 80
+track, 5¼" disc drive attached to you computer (even if you are only reading 40 track discs). Most original Acorn RISC OS computers can support an additional 5¼" disc drive, although an adaptor or buffer card is usually required. Try looking on internet support forums such as www.stardot.org.uk for information.
+
+If you are using a switchable 40/80 track 5¼" disc drive with your RISC OS
+computer, it should be set to 80 track mode at all times, as this is what
+ImageDFS and the computer is expecting. ImageDFS auto-detects the size of the
+disc (40 or 80 track) and switches the disc drive automatically into the
+correct mode, so there should not be any occasion in which you need to
+manually adjust the tracking on the disc drive, whatever disc size is used.
+
+ImageDFS also works with 3.5" discs, these were built in to most original Acorn RISC OS computers, and may be available as expansions on more modern hardware (although USB drives do not work, as these tend to be hard-wired for PC/FAT format floppy discs).
+
+ImageDFS can read both DFS and DDFS (double density) BBC discs, throughout this help file both types of BBC discs will be referred to as being DFS discs and unless indicated otherwise everything said applies to both DFS and DDFS discs. The DDFS disc format supported by ImageDFS is the Watford Electronics DDFS format, however other DDFS types such as Solidisk DDFS are known to work with ImageDFS.
+
+
+Using ImageDFS with the !6502em BBC emulator
+--------------------------------------------
+
+In order to get the most benefit from using ImageDFS with the !6502em BBC
+emulator, you will need version 1.60 (or later) of the emulator, as
+these versions contain support for ImageDFS. The term 'BBC emulator' used in the section below refers specifically to !6502em, and not to the Acorn BBC
+emulator, however ImageDFS can be used with the Acorn emulator if required.
+
+To access a DFS disc from the BBC emulator...
+
+There are two methods of accessing DFS discs from the BBC emulator. The
+simplest is to load the BBC emulator as normal, enter the emulator, and type
+*DRIVE 0. The BBC emulator will then tell ImageDFS it wants to access a DFS
+disc. If you have two disc drives in your computer (a 3.5" and 5¼" drive)
+ImageDFS will by default select drive 1 (not drive 0 as you typed into the
+emulator). This is done to allow BBC programs which think they are running
+from drive 0 access the correct disc drive. You can change the drive(s) used
+by the emulator through ImageDFS when required - see below.
+
+Once you have typed *DRIVE 0, type *. and the listing should appear from your
+5¼" disc drive. If the DFS disc is a game disc, it probably has a !Boot file,
+press Shift-Break, and the game will load just like on the BBC.
+
+You can also type *DRIVE 2, to access the second side of the disc, this tells
+ImageDFS to read in the directory 'DFSSide2' from the DFS disc. *DRIVE 1
+selects the second of the drives available to te emulator and *DRIVE 3 the
+second side of the second drive.
+
+The alternative method of reading a DFS disc into the emulator is to press
+f12 (from the RiscOS desktop) to get to the *command line, and type *Dir
+ADFS::1.$ (for drive 1, if this is your 5¼" disc drive). Now press return to
+re-enter the desktop, and click menu over the BBC emulator's icon. Select
+'Read CSD' from the 'Misc >' entry - this tells the BBC emulator to access
+the current RiscOS directory. Now enter the emulator, and type *. this should
+list the contents of your DFS disc. Press Shift-Break to load, if the disc
+has a !Boot file.
+
+
+Copy-protected BBC disc software
+--------------------------------
+
+As mentioned above, no matter what size of disc you use, 40 or 80 track,
+ImageDFS can auto-detect between them, and access them correctly as long as
+the disc drive is set to 80 track mode.
+
+This usually works, but on occasions ImageDFS can be tricked by
+copy-protected software discs (like Elite), and may cause a load error. This
+happens if the disc pretends to be 80 track, but in fact is 40 track -
+ImageDFS can't tell, and so the disc may not load correctly. Not all
+protected discs give this error, but if you find a game disc that won't load,
+ImageDFS provides an override option.
+
+To set the override option, open the ImageDFS configure window (adjust on
+ImageDFS's icon, or open it from the icon bar menu). This shows a lot of
+options available for you (described later), the one you are looking for is
+in the lower half of the window when it opens. This option reads 'Treat all
+discs as 40 track, single sided games discs', and does exactly what it says.
+Once you have selected it, click 'Ok' and the window will close - now
+ImageDFS will not auto-detect disc sizes, but will assume all discs are 40
+track (the disc drive should still be set to 80 tracks) and single sided.
+
+After you select this option, if you have a DFS disc in the disc drive, you
+should 'Dismount' it - this will inform the computer of the change to
+ImageDFS.
+
+Now try loading the disc again - it should work perfectly, because now
+ImageDFS won't be tricked into thinking it is an 80 track disc.
+
+Remember to switch the '40 track only' option off after you finish using
+protected games discs, so that ImageDFS is able to detect 80 track discs
+again!
+
+
+Quiting ImageDFS
+----------------
+
+Once you have finished using ImageDFS, you can quit it from its menu, in the
+normal way. However the 'Quit' option in the menu has a sub-menu allowing you
+to choose if you want to quit all of ImageDFS, or only the desktop part - so
+DFS discs can still be used, but without the desktop part of the program,
+saving 96K in memory.
+
+
+
+The rest of this help file describes parts of the ImageDFS desktop program,
+giving information on the available options and how to use them.
+
+
+Selecting which ADFS disc drive is used by the BBC emulator
+-----------------------------------------------------------
+
+To choose which ADFS (real) disc drive is accessed by the BBC emulator when
+*DRIVE 0,1,2 or 3 is issued, ImageDFS provides a drive selection window. You
+can open this from ImageDFS's icon bar menu.
+
+The window shows your computer's available ADFS disc drives along the top,
+and the drive numbers available to the BBC emulator along the bottom. The
+default setting for a two-drive computer is for ADFS drive 1 to be selected
+when BBC drive 0 is issued from the emulator, and ADFS drive 0 to be selected
+when BBC drive 1 is used.
+
+To change the settings, drag an ADFS drive icon from the top of the window to
+either BBC drive 0 or 1, depending on which BBC drive you want to access that
+ADFS drive.
+
+Your new settings can be saved as the default be clicking 'Save', or restored
+to their previous settings by clicking 'Cancel'. Click 'Ok' to use the new
+settings, but not to save them.
+
+
+Configuring ImageDFS to your own preferences
+--------------------------------------------
+
+The ImageDFS configure window allows you to choose your preferred start-up
+options for ImageDFS. These options are described below:
+
+- Disc detection method -
+
+This tells ImageDFS how it should look for DFS discs. There are 4 options
+here, one has been described above, the 'Treat all discs as 40 track, single
+sided games discs' option, the others are described here.
+
+The 'Load ImageDFS for fast detection' option tells ImageDFS if it should use
+its special load routine to load with higher priority than the operating
+system, in order to access DFS discs quickly. If not selected, ImageDFS will
+load with low priority, and DFS discs can take a very long time to load - due
+to a problem in RiscOS, which causes the computer to think some DFS discs are
+ADFS discs with errors on them. Most users will have no need to alter this
+setting, however if you do deselect it, you can improve the slower DFS access
+time by selecting the 'Set retries to 0 on loading' option, and reloading.
+
+- Disc formatting options -
+
+(not supported in the read only version)
+
+- Desktop options -
+
+The single option in this section allows you to choose if you want ImageDFS
+to load without the desktop part in future. This is very useful as it saves
+96K of memory when using ImageDFS, because only the module part is loaded.
+
+If you select this option, you have to save the configuration for it to take
+effect. Then next time you load ImageDFS, the desktop part will not load. If
+you want to get the desktop part to load again, you can click on the ImageDFS
+loading banner, and the desktop part will load, enabling you to deselect this
+option.
+
+
+Using ImageDFS's DFS 'Image' creator
+------------------------------------
+
+To open ImageDFS's image-file creator, click select on the icon bar icon, or
+choose 'Image files...' from the icon bar menu. The image-file handling
+window allows you to create blank DFS image files of any size as defined by
+the various options available, the output file size of the image is displayed
+next to the save box, along with a summary of the image type to create. Drag
+the image file from the save box to create the new blank image.
+
+However, creating a blank image is of little use with the read only version
+of ImageDFS, what is of more use is creating an image from a DFS disc. To
+create an image of a disc, click on the 'Read from disc...' button, this
+opens the 'create from floppy' window.
+
+To create an image of a DFS disc, insert the disc into your 5¼" drive. Now
+click on the drive number of the 5¼" drive, in the window. You can decide
+which side, or both, of the disc you want to make an image of, and choose
+'Top', 'Bottom' or select both.
+
+When you are ready, click 'Read'. The drive with your disc in should become
+active, as ImageDFS checks the disc is really a DFS disc. If it isn't, or you
+have selected to make a double sided image, and one side is a different
+format to the other, an error will be given telling you what went wrong and
+how to get round it.
+
+Once the disc check is successful, ImageDFS will let you know the size of the
+disc by changing the progress icon in the window (in a similar manner to the
+format window when you format a disc). A save box should appear, if it
+disappears too soon, click on 'Read' again. Drag the save image file icon to
+a directory displayer to create the image. Now the green percentage bar
+should gradually fill up as the disc is read, the process is multi-tasking,
+so you can continue working as the image is created. After the process is
+complete, click 'Ok' to close the create-image window.
+
+If an error is found on the disc, ImageDFS will ask if you wish to continue
+and risk having corrupted files in the image, or abort the process.
+
+Note: making images of commercial software may infringe copyright laws, make
+sure you only make DFS images of legal software. Indeed it is not possible to
+make images of most games because they use copy-protection requiring the use
+of the original disc to load.
+
+
+ImageDFS filetype translation
+-----------------------------
+
+The last part of this help file covers ImageDFS's filetype translation
+settings. You may have noticed when you access DFS discs, the files appear to
+have normal looking RiscOS filetypes, like Basic and Data etc. This is
+because by default, ImageDFS examines each DFS file's load and execute
+address looking for any recognisable sign that the file might be a certain
+type.
+
+If you use ImageDFS a lot you may find it useful to be able to alter the way
+ImageDFS maps RiscOS filetypes to DFS files, although to be able to do this
+you must have some idea of BBC load and execute addresses given to various
+files.
+
+The filetype mapping window contains an on/off switch to tell ImageDFS to use
+or not use its filetype mapping settings (the status of this is saved when
+the configuration is saved from the options window). If you turn this off,
+and open a DFS disc window, all the files appear as untyped white files.
+
+Before editing the filetype translation table, it is important to know how it
+works. The table consists of a list of RiscOS filetypes (either entered as
+text or '&xxx' where 'xxx' is a hexadecimal number), and a list of DFS load
+and execute addresses. eg.
+
+RiscOS filetype : BASIC
+DFS load address: &xxxx00 - the 'x' numbers are ignored and NOT compared
+DFS exec address: &008023
+
+When a DFS file is found to match the load and exec addresses in the table
+(excluding any numbers replaced by 'x's) it is given that RiscOS filetype. In
+this example, if a DFS file is found with load address &001900 and exec
+address &008023, it is given the filetype BASIC.
+
+Similarly if the first entry in the filetype translation table contained...
+
+RiscOS filetype : DATA
+DFS load address: &xxxxxx - the 'x' numbers are ignored and NOT compared
+DFS exec address: &xxxxxx
+
+Then all DFS files would be given the filetype DATA, because their load and
+exec addresses would not be compared to anything, since the 'x' numbers are
+ignored.
+
+The translation table is scanned in a priority order, so the types which
+appear at the start of the table are checked first. This enables a DATA
+mapping, like the one shown above, to be included at the end of the table, so
+any files not matching the more specific types can be set to the DATA
+filetype.
+
+To enter and edit the filetype table entries, and their positions in the
+scanning list, use menu over a type name in the 'Filetypes' box of the
+filetype window. The design of the menu system models that of the RiscOS
+filer, so it is very easy to understand and use.
+
+An example of how to create a new type mapping at top priority:
+
+Click menu, move to the 'New filetype >' sub-menu, and enter 'Text'. A new
+entry will appear in the list, called 'Text', it will also be selected for
+editing. Move to the 'DFS load address' box and enter 'xxFFFF', do the same
+in the 'DFS exec address' box and hit return (the window should loose input
+focus). The entry is now in use by ImageDFS, but if your new entry didn't
+appear at the top of the list when you created it, you can move it there for
+higher priority. Click menu over the entry, open the 'Type 'Text' > Move >'
+sub-menu. Enter '1' and press return. The 'Text' type will move to the top of
+the list to be the first filetype checked on accessing a DFS disc.
+
+When you next open (or re-open) a DFS disc filer window, any BBC files with
+load address &FFFF and exec address &FFFF (usually !Boot files), will appear
+as the new filetype 'Text'.
+
+If you decide to create your own filetype maps, or edit the existing table in
+any way, the altered filetype table can be saved as the start-up setting by
+selecting 'Save filetypes' from the filetype menu.
+
+
+Disclaimer, credits and acknowledgements for ImageDFS
+-----------------------------------------------------
+
+The !ImageDFS application, ImageDFS module and all associated files within the application folder are © Stephen Harrison 1996-2014. ImageDFS is a filing system and although it has been extensively tested, it is provided with no warranty or guarentee of performance. You use ImageDFS at your own risk, and you are advised to store backups of any important files on alternative media.
+
+ImageDFS was written and designed by Stephen Harrison, and was originally released commercially by Warm Silence Software from 1996-2005. This version of ImageDFS is released as freeware by Pi-Star at www.pi-star.co.uk/imagedfs and may be distributed, providing it is not modified and is not sold for a profit.
+
+Special thanks are due to: Robin Watts & Mike Borcherds at WSS and to everyone who has helped in testing ImageDFS at various stages of its life.
+
+And thanks to you, the user, for trying out !ImageDFS.
+
+
+
+
+                    ImageDFS © Stephen Harrison 1996-2014

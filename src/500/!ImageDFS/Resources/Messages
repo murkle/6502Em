@@ -1,0 +1,132 @@
+# Help messages for ImageDFS v0.77 (desk) v0.71 (module)
+
+App:This is the ImageDFS icon.|MClick SELECT to open the image handling window.|MClick ADJUST to open the configure window. 
+
+#
+# options and optwindow windows
+#
+
+OP05:This tells ImageDFS to use system routines to detect DFS discs.|MThis can be very slow if the 'Load ImageDFS for fast detection' option is not selected, as RiscOS can then mistake DFS discs for normal ADFS discs with errors on!
+OP06:When this is selected ImageDFS sets disc retries to 0 to improve preformance if the 'Load ImageDFS for fast detection' is not selected.
+OP07:When selected, ImageDFS uses special routines to load 'in front' of the operating system, allowing fast detection of DFS discs.|MIf unselected, ImageDFS is loaded normally but this can result in DFS discs taking a long time to access.
+OP08/OP09:When using ImageDFS with 40 track discs, some game copy-protection systems can trick it into thinking the disc is 80 track - causing an error. If this is selected ImageDFS will only read 40 track discs - so the protection systems work.
+OP12/OP13:This sets ImageDFS to format all discs with 62 file catalogues. Discs formatted with 62 file catalogues can store more files, but will only work correctly on BBC computers fitted with Watford Electronics DFS or DDFS.
+OP14/OP15:This option sets ImageDFS to format DDFS discs (which are not readable on Acorn DFS), with Watford DDFS 62 file catalogues, and DFS discs with Acorn DFS 31 file catalogues.
+OP16/OP17:If you intend to use DDFS discs formatted with ImageDFS on BBC computers using Solidisk DDFS, you should select this option as it formats both DDFS and DFS discs to have 31 file catalogues.
+OP20:Select this if you want ImageDFS to load without the desktop part of the program. This saves 96K of memory when using ImageDFS.
+OP??:From this window you can choose the start-up options for ImageDFS.
+
+OW03:This saves the current start-up options as the default settings.
+OW02:This restores the previous configuration settings.
+OW01:This sets ImageDFS to use the current settings, but does not save them.
+OW??:From this window you can choose the start-up options for ImageDFS.
+
+#
+# driveselect window
+#
+
+DS10/DS11/DS12/DS13:Drag this icon to either of the DFS disc drive icons to select which ADFS disc drive is accessed by the BBC emulator.
+DS14:Drag an ADFS drive icon to this icon to so the BBC emulator uses that drive when *Drive 0 is issued.
+DS15:Drag an ADFS drive icon to this icon to so the BBC emulator uses that drive when *Drive 1 is issued.
+DS19:This sets the current drive mapping settings to be used.
+DS17:This saves the current settings as the default settings.
+DS18:This restores the previous drive mapping settings.
+DS??:This window allows user selection of which ADFS disc drives are available to the BBC emulator.
+
+#
+# filetypes and ARCtypes windows
+#
+
+FT00:Select this icon if you want DFS files to appear with RiscOS icons in filer windows.
+FT06:This icon display shows the current RiscOS filetype being edited.
+FT02/FT01:If a DFS file's load address matches the address here (numbers replaced with 'x's are not compared), and it's exec address matches the address below, it will appear with the filetype given above.
+FT04/FT03:If a DFS file's exec address matches the address here (numbers replaced with 'x's are not compared), and it's load address matches the address above, it will appear with the filetype given above.
+FT??:This window allows user defined filetype translation, so that DFS files appear with RiscOS icons on the desktop.
+
+AT??:These are the RiscOS filetypes currently mapped to DFS load/exec addresses. They are displayed in priority order, so the first types are tested before the last.
+
+#
+# progInfo window
+#
+
+IB??:This window gives some information on the version of ImageDFS you are using.
+
+#
+# image handling window
+#
+
+IH00:Here you can choose options to affect the size and type of DFS image file you are creating.
+IH01:Select this if you want to create a DFS single density image.
+IH14:Select this if you want to create a DDFS double density image.
+IH02:Select this if you are creating a 40Track image file.
+IH03:Select this if you are creating an 80Track image file.
+IH17:Select this for a 31 file, Acorn DFS catalogue.
+IH18:Select this for a 62 file, Watford DDFS catalogue.
+IH04:If you want a 'double sided' image, which can store twice as much information, select this.
+IH19:If you want to make an exact image file copy of either side, or both, of a DFS or DDFS disc, click this to bring up the 'Create image from floppy' window.
+IH05:Here the size and type of image you have selected above is displayed.
+IH08:This is the size, in K, of the image file you have designed above.
+IH??:From here you can create DFS image files, which can be accessed as if they were real DFS discs, but can be stored and used from your hard disc or normal ADFS discs.
+
+#
+# save box window
+#
+
+XF03:Drag this icon to a filer window to save.
+XF01:Enter the new name of the file here.
+XF00:If there is a full filename and pathname given in the text icon, click here to save.
+XF??:This window is the save window for your new DFS image.
+
+#
+# read floppy window
+#
+
+RF04/RF01/RF02/RF03/RF11:Select which disc drive to make the DFS image from.
+RF07/RF08/RF09:Choose which side of the disc you want to make the image from or select both sides for a double sided image file.
+RF00/RF12:This bar shows the progress of the copy from the disc to the image.
+RF05:Click this to exit this window and abort copying from disc to image.
+RF06:Click here to bring up a save window, and start creating the DFS image.
+RF??:This window allows you to create a DFS image file from a copy of a DFS disc.
+
+#
+# typeinfo window
+#
+
+TI05:The name and filetype number of the currently selected filetype.
+TI01/TI02:This gives the position in the order that the RiscOS filetypes are checked to see if they match the load and exec addresses below. The lowest position numbers are checked first.
+TI00:This is the RiscOS filetype's icon.
+TI07/TI08/TI06/TI03:This filetype is used if a file's load and exec addresses match the load and exec addresses given here ('x's replace numbers not to be compared). 
+TI??:This dialogue box shows information about the currently selected filetype.
+
+#
+# menus
+#
+
+# iconbar menu
+
+MnIB:This menu gives access to the various windows handled by ImageDFS.
+MnIB.00:Move the pointer right to read information about this version of ImageDFS.
+MnIB.01:Click SELECT to open the image file handling window.|MThis allows you to create DFS image files that can be stored on your hard disc or on normal ADFS floppy discs.
+MnIB.02:Click SELECT to open the DFS drive mapping window.|MThis lets you alter which ADFS disc drives can be used for reading DFS discs under the BBC emulator.
+MnIB.03:Click SELECT to open the filetype mapping window.|MFrom here you can edit and create filetype maps so that DFS files appear with RiscOS icons.
+MnIB.04:Click SELECT to open the configure window.|MThis allows you to choose the start-up options for ImageDFS.
+MnIB.05:Click SELECT to quit the ImageDFS desktop program, or move right for more choice.
+MnIB.05.00:Click SELECT to quit only the ImageDFS desktop part.|MYou can still read DFS discs if you quit this way, as the disc handler is not removed.
+MnIB.05.01:Click SELECT to quit all of the ImageDFS program.
+
+# filetype menu
+
+MnTM:This menu allows user control over the RiscOS filetype mappings.
+MnTM.00:Move the pointer right to open the control menu for the selected filetype(s).
+MnTM.00.00:Move right to open the rename window, to change this filetype's type.
+MnTM.00.00.00:Enter the new filetype name or number (in hexadecimal) here.
+MnTM.00.01:Click SELECT here to edit this filetype mapping.
+MnTM.00.02:Click SELECT to remove this filetype, or selection of filetypes, from the list.
+MnTM.00.03:Move right to open the information dialogue box for this filetype mapping.
+MnTM.00.04:Move right to open the move-position window, to alter this filetype's position.
+MnTM.00.04.00:Enter the new position for this filetype in the filetype mapping list.
+MnTM.01:Click SELECT to select all filetypes in this window.
+MnTM.02:Click SELECT to deselect all the selected filetypes.
+MnTM.03:Move right to open the new filetype window.
+MnTM.03.00:Enter the filetype name, or number (in hexadecimal), to create a new filetype mapping.
+MnTM.04:Click SELECT to save the filetype mappings defined in this window as the defaults.

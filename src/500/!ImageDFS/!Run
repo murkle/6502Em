@@ -1,0 +1,25 @@
+|
+| !Run file for Image DFS v0.80 (desk) v0.90 (module)
+|
+RMEnsure UtilityModule 3.00 Error ImageDFS requires RiscOS 3 to run.
+|
+Set ImageDFS$Dir <Obey$Dir>
+IconSprites <ImageDFS$Dir>.!Sprites
+Set File$Type_B22 DFSImage
+|
+Set BBCModelB$FS_4 <ImageDFS$Dir>.IDFSROM
+Set Alias$InitDFS Set TempIDFS$Dir |<FileSwitch$CurrentFilingSystem>:@
+|
+| The next line is useful when running DFS !Boot files without an emulator
+|
+Set Alias$Chain Basic -quit %*0
+|
+WimpSlot -min 240K -max 240K
+|
+Set ImageDFS$Loaded Yes
+RMEnsure ImageDFS 0.90 Set ImageDFS$Loaded No
+If "<ImageDFS$Loaded>"="No" Then Run <ImageDFS$Dir>.LoadIDFS
+RMEnsure ImageDFS 0.90 Error Wrong version of Image DFS module present, requires at least v0.90
+|
+If "%0" <> "" Then Filer_OpenDir %0
+Run <ImageDFS$Dir>.!Welcome
