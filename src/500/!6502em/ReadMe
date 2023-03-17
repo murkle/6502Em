@@ -1,0 +1,37 @@
+This archive contains:
+
+!6502Em v5.00 release candidate + source, 1st March 2014
+ -> 32bit updated source is contained within the dir !6502Em.AllSource
+ -> source screen tables are in !6502Em.Tables and !6502Em.Tables_HR
+!ImageDFS v0.90b, 11th January 2014
+ModeDefs (required for Iyonix, RiscPC and OMAP boards)
+
+--------------------------------------------------------------------------
+
+To use:
+
+To use !ImageDFS and !6502em, load both applications. Then drag a .ssd/.dsd
+file to the !6502em icon on the icon bar. (Without loading ImageDFS, the
+emulator can still load some .ssd files, but functionality is not complete
+and DDFS images / double sided images are not supported).
+
+For Iyonix, RiscPC or OMAP3/4 based computer, you may need to install
+additional screen modes in your mode definition file. See file 'ModeDefs'.
+These are not required on the Raspberry Pi (because it uses the AnyMode
+module instead).
+
+Notes:
+
+!6502Em v5.00
+
+Known issues to fix before release...
+1) Only tested on RISC OS 5, and **not expected to work on 26bit RISC OS**
+2) Electron emulation is not available (missing source, so could not 32bit)
+3) Screen modes 1-6 sometimes appear with all-black palette
+4) Use of 32bit/ArmV7 (strict) CPU settings not fully tested
+
+
+!ImageDFS v0.90b
+
+This has not been updated since "beta-test", but should work on all RISC OS
+from 3.1-5.2+

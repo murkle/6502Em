@@ -1,0 +1,13 @@
+v5.00 Release candidate 1st March 2014
+--------------------------------------
+
+6502Em is a program to emulate an 8 bit BBC Microcomputer
+
+Please read the supplied files for instructions on how to use it.
+
+6502Em and its associated files are all Copyright (c) 1995-2005
+Michael and Anne Borcherds. Originally released for Warm Silence Software, now by Murklesoft.
+
+v5.00 release in 2014 by Stephen Harrison including updates for 32bit ARMv7, RISC OS 5.2 / Raspberry Pi compatibility and minor bug fixes.
+
+This release is freeware and may be distributed free of charge providing it is not sold for a profit.

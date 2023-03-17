@@ -1,0 +1,36 @@
+Set 6502Em$Dir <Obey$Dir>
+Set 6502Em$Res <Obey$Dir>.Resources
+Set 6502Em$ROMPath <Obey$Dir>.ROMs.
+Set File$Type_BBC BBCSnap
+Set File$Type_B22 DFSImage
+RMEnsure AnyMode 0.05 X RMLoad <6502Em$Res>.AnyMode
+RMEnsure 6502Support 0.12 RMLoad <6502Em$Res>.65Support
+Set Alias$@RunType_BBC Run <6502Em$Dir>.!Run %%*0
+
+| set where to send printer output 0=null, 1=parallel, 2=serial (see OS_Byte 5 PRM 1-508 for more details)
+Set 6502Em$Printer 0
+
+| 6502Em$Platform 0=ARM6/7/VA5000 1=StrongARM 2=Iyonix 3=Virtual RPC
+Set 6502Em$Platform 3
+RMEnsure UtilityModule 3.50 Set 6502Em$Platform 0
+| check if running on Virtual Acorn
+RMEnsure HostFS 0.00 Run <6502Em$Res>.Platform
+
+Set 6502Em$Sprites !Sprites
+If <6502Em$Platform>=2 Then Set 6502Em$Sprites 5Sprites
+IconSprites <6502Em$Res>.<6502Em$Sprites>
+
+If <6502Em$Platform> > 0 Then Set 6502Em$HiRes Yes Else Set 6502Em$HiRes No
+| if the variable 6502Em$HiRes is set to No then use the old 16 colour 640x256 mode
+| or if set to Yes then use the new 256 colour 640x512 mode
+| (will work better with some LCD monitors)
+| Iyonix will ignore this and always use X640 Y512 C256
+|
+| uncomment one of these lines to override:
+|Set 6502Em$HiRes Yes
+|Set 6502Em$HiRes No
+
+SetMacro 6502Em$TempDir <Wimp$ScrapDir>.6502Em
+
+WimpSlot -min 928k -max 928k
+BASIC -QUIT <6502Em$Dir>.!RunImage %*0

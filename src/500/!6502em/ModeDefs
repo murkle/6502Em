@@ -1,0 +1,50 @@
+
+# For Iyonix, RiscPC and OMAP boards, you will need to install the following
+# 640x512 and 640x500 screen modes (below).
+#
+# Raspberry Pi does not require these
+
+
+# 640 x 512 (60Hz)
+startmode
+mode_name:640 x 512
+x_res:640
+y_res:512
+pixel_rate:32000
+h_timings:64,76,30,640,30,30
+v_timings:3,16,40,512,40,4
+sync_pol:3
+endmode
+
+# 640 x 500 (60Hz)
+startmode
+mode_name:640 x 500
+x_res:640
+y_res:500
+pixel_rate:32000
+h_timings:64,76,36,640,36,30
+v_timings:3,16,40,500,40,4
+sync_pol:3
+endmode
+
+# 640 x 512 (70Hz)
+startmode
+mode_name:640 x 512
+x_res:640
+y_res:512
+pixel_rate:37500
+h_timings:64,76,30,640,30,30
+v_timings:3,16,40,512,40,4
+sync_pol:3
+endmode
+
+# 640 x 500 (70Hz)
+startmode
+mode_name:640 x 500
+x_res:640
+y_res:500
+pixel_rate:37500
+h_timings:64,76,36,640,36,30
+v_timings:3,16,40,500,40,4
+sync_pol:3
+endmode
