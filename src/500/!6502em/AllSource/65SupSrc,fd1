@@ -1,0 +1,1341 @@
+REM > 6502ModSrc
+REM
+REM v0.12 fully updated for 32bit compatibility by S. Harrison, 2014
+:
+DIM code 20000
+:
+mem=3
+arc_screenstart=-&100+80
+crt_regs=-&100+120
+:
+FOR p=4 TO 7 STEP 2
+O%=code
+P%=0
+[OPT p
+EQUD    0 ; start
+EQUD    init0
+EQUD    fin
+EQUD    serv
+EQUD    title
+EQUD    help
+EQUD    0 ; tbl
+EQUD    &4C480 ; official SWI chunk
+EQUD    swicode
+EQUD    switable
+EQUD    0
+EQUD    0
+EQUD    x32bitword
+.x32bitword
+EQUD    1 ; module OK on RISC OS 5
+
+
+.init0
+STMFD   R13!,{R1-R5,R14}
+MOV     R0,#&10
+ADR     R1,claim
+MOV     R2,#0
+SWI     "XOS_Claim"
+LDMVSFD R13!,{R1-R5,PC}
+:
+MOV     R0,#14
+MOV     R1,#11
+SWI     "XOS_Byte"
+LDMFD   R13!,{R1-R5,PC}
+
+
+.fin
+STMFD   R13!,{R14}
+MOV     R0,#13
+MOV     R1,#11
+SWI     "XOS_Byte"
+MOV     R0,#&10
+ADR     R1,claim
+MOV     R2,#0
+SWI     "XOS_Release"
+LDMFD   R13!,{PC}     ;removed ^ /sh
+
+
+.title
+EQUS    "6502Support"
+EQUB    0
+ALIGN
+
+
+.help
+EQUS    "6502 Support"+CHR$9+"0.12 ("+MID$(TIME$,5,11)+")"
+EQUB    0
+
+
+.getsync
+LDR     R0,sync_data
+MOV     R1,#0
+STR     R1,sync_data
+MOV     PC,R14        ;removed S /sh
+
+
+.sync_data
+EQUD    0
+.sync
+LDR     R0,sync_data
+ADD     R0,R0,#1
+STR     R0,sync_data
+MOV     R0,#4
+MOV     PC,R14
+
+
+.tmp
+EQUD    0
+
+
+.geteleckeys
+ADR     R0,elec_keys
+MOV     PC,R14
+
+
+.elec_keys
+EQUD    0
+EQUD    0
+EQUD    0
+EQUD    0
+
+
+.claim
+CMP     R0,#4
+BEQ     sync
+CMP     R0,#11 ; key pressed
+MOVNE   PC,R14
+STR     R1,R1store
+STR     R2,R2store
+;AND     R2,R2,#&FF
+CMP     R1,#1
+STREQB  R2,kdata
+:
+;CMP R2,#&4C   ; Left Shift
+;CMPNE R2,#&58 ; Right Shift
+;STREQB R1,kdata+1
+:
+STR     R2,tmp
+:
+FNadr(3,electronmap)
+LDR R2,[R3,R2,LSL#2]
+CMP R2,#&FF
+BEQ skip_elec
+:
+ADR R3,elec_keys
+MOV R0,R2,LSR#8
+AND R2,R2,#&FF
+AND R0,R0,#%11
+LDR R4,[R3,R0,LSL#2]
+CMP R1,#1
+ORREQ R4,R4,R1,LSL R2
+MOVNE R1,#1
+BICNE R4,R4,R1,LSL R2
+MOVNE R1,#0
+STR R4,[R3,R0,LSL#2]
+:
+.skip_elec
+LDR R2,tmp
+:
+ADR R3,keymap
+LDRB R2,[R3,R2]
+CMP R2,#&FF : BEQ key_skip
+ADR R3,keys
+STRB R1,[R3,R2]
+.key_skip
+LDR R2,tmp
+ADR R3,keymap_shift
+LDRB R2,[R3,R2]
+CMP R2,#&FF : BEQ key_exit
+ADR R3,keys_shift
+STRB R1,[R3,R2]
+.key_exit
+:
+MOV R0,#11
+LDR R1,R1store
+LDR R2,R2store
+.nokey
+MOV PC,R14
+
+
+.R1store
+EQUD 0
+.R2store
+EQUD 0
+
+
+.getkdata
+LDRB R0,kdata
+MOV R1,#&FF
+STR R1,kdata
+ADR R1,keymap
+MOV PC,R14
+
+
+.checkkdata
+LDRB R0,kdata
+MOV PC,R14
+
+
+.getkeyaddr
+ADR R0,keys
+MOV PC,R14
+
+
+.readkeymapaddr
+ADR R0,keymap
+MOV PC,R14
+
+
+.keymap
+]
+P%+=256
+O%+=256
+[OPTp
+
+
+.keymap_shift
+]
+P%+=256
+O%+=256
+[OPTp
+
+
+.kdata
+EQUD &FF
+
+
+.keys
+]
+FORI%=0 TO 255 : [OPTp : EQUB 0 : ] : NEXT
+[OPTp
+
+
+.keys_shift
+]
+FORI%=0 TO 255 : [OPTp : EQUB 0 : ] : NEXT
+[OPTp
+ALIGN
+
+
+.getelectronmap
+ADR R0,electronmap
+MOV PC,R14
+
+
+.electronmap
+]
+FORI%=0 TO 255 : [OPTp : EQUD 0 : ] : NEXT
+[OPTp
+
+
+.updatescreen
+STMFD R13!,{R2-R12,R14}
+:
+;ADR R0,block1
+;ADD R1,R0,#8
+;SWI "OS_ReadVduVariables"
+;LDR R9,[R1]     ; screenstart
+LDR R9,[mem,#arc_screenstart]
+:
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#19]
+ANDS R7,R7,#%11
+MOVNE R12,#&5800
+MOVEQ R12,#&4000
+CMP R7,#%10
+MOVEQ R12,#&3000
+CMP R7,#%01
+MOVEQ R12,#&6000
+:
+ADD R0,mem,#&FE00
+LDRB R0,[R0,#&20]
+TST R0,#%10 ; teletext?
+BNE updatescreen7
+:
+TST R0,#%100
+BEQ updatescreen1
+:
+TST R0,#%1000
+BEQ updatescreen2
+:
+B updatescreen0
+
+
+.init
+STR R0,crt_regs_addr
+MOV PC,R14
+
+
+.crt_regs_addr
+EQUD 0
+
+
+.pointer_on
+EQUS "Pointer 1"+CHR$0
+ALIGN
+
+
+.updatescreen0
+LDRB R0,lastmode
+CMP R0,#0
+BEQ skip_mode0
+SWI &116
+SWI &100 ; MODE 0
+ADR R0,pointer_on : SWI "OS_CLI"
+MOV R0,#106 : MOV R1,#&82 : SWI "OS_Byte"
+SWI "OS_RemoveCursors"
+MOV R0,#0 : STRB R0,lastmode
+.skip_mode0
+:
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#%11111
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#3
+:
+ADR R8,revtable
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+MOV R4,R4,LSL#3
+:
+;MOV R4,R2,LSL#8
+.loop2
+;MOV R2,#80
+.loop1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#0]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*2]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*3]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*4]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*5]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*6]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*7]
+ADD R7,R7,#1 : CMP R7,#&8000 :
+MOVEQ R7,R12
+:
+ADD R9,R9,#1
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+LDRB R2,[R6,#1] ; no of horiz chars
+ADD R9,R9,#640 : SUB R9,R9,R2
+SUBS R4,R4,R2,LSL#3 ; #640
+BHI loop2
+:
+LDMFD R13!,{R2-R12,pc}   ;removed ^ /sh
+
+
+.block1
+EQUD 149 : EQUD -1
+
+
+.block2
+EQUD 0 : EQUD 0
+
+
+.revtable
+]
+O%+=256
+P%+=256
+[OPTp
+
+
+.updatescreen5
+LDR R14,elite
+CMP R14,#0
+ADREQ R8,mode4tab+512 ; mode5tab
+BEQ updatescreen4_2
+:
+.updatescreen4
+ADR R8,mode4tab
+:
+.updatescreen4_2
+LDRB R0,lastmode
+CMP R0,#4
+BEQ skip_mode4
+SWINE &116
+SWINE &101 ; MODE 1
+ADR R0,pointer_on : SWI "OS_CLI"
+MOV R0,#106 : MOV R1,#&82 : SWI "OS_Byte"
+SWI "OS_RemoveCursors"
+MOV R0,#4 : STRB R0,lastmode
+:
+.skip_mode4
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#%11111
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#3
+LDR R14,elite
+:
+;ADR R8,mode4tab
+:
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+MOV R4,R4,LSL#3
+;MOV R4,R2,LSL#8
+.loop2
+;MOV R2,#40
+.loop1
+ADD R11,R9,#1
+LDRB R0,[mem,R7]
+LDR R5,[R8,R0,LSL#1]
+STRB R5,[R9,#0]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#0]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDR R5,[R8,R0,LSL#1]
+STRB R5,[R9,#80]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#80]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDR R5,[R8,R0,LSL#1]
+STRB R5,[R9,#80*2]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#80*2]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDR R5,[R8,R0,LSL#1]
+STRB R5,[R9,#80*3]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#80*3]
+ADD R7,R7,#1
+:
+LDRB R0,[R6,#3]
+TST R0,#1 << 4
+:
+LDREQB R0,[mem,R7]
+LDREQ R5,[R8,R0,LSL#1]
+STREQB R5,[R9,#80*4]
+MOVEQ R5,R5,LSR#8
+STREQB R5,[R11,#80*4]
+ADD R7,R7,#1
+LDREQB R0,[mem,R7]
+LDREQ R5,[R8,R0,LSL#1]
+STREQB R5,[R9,#80*5]
+MOVEQ R5,R5,LSR#8
+STREQB R5,[R11,#80*5]
+ADD R7,R7,#1
+LDREQB R0,[mem,R7]
+LDREQ R5,[R8,R0,LSL#1]
+STREQB R5,[R9,#80*6]
+MOVEQ R5,R5,LSR#8
+STREQB R5,[R11,#80*6]
+ADD R7,R7,#1
+LDREQB R0,[mem,R7]
+LDREQ R5,[R8,R0,LSL#1]
+STREQB R5,[R9,#80*7]
+MOVEQ R5,R5,LSR#8
+STREQB R5,[R11,#80*7]
+ADD R7,R7,#1 : CMP R7,#&8000 : MOVEQ R7,R12
+:
+ADD R9,R9,#2
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+LDRB R2,[R6,#3] : MOV R2,R2,LSR#4 ; vertical timing
+MOV R5,#160 : MOV R5,R5,LSL R2
+ADD R9,R9,R5                      ; to make fortress work
+:
+LDRB R2,[R6,#1] ; no of horiz chars
+SUB R9,R9,R2,LSL#1
+CMP R14,#1 : CMPEQ R4,#&800 : ADREQ R8,mode4tab+512
+CMP R14,#1 : CMPEQ R4,#&100 : BEQ skip_last_line
+SUBS R4,R4,R2,LSL#3 ; #320
+BHI loop2
+:
+.skip_last_line
+LDMFD R13!,{R2-R12,pc}   ;removed ^ /sh
+
+
+.eliteon
+MOV R0,#1
+STRB R0,elite
+MOV PC,R14        ;removed S /sh
+
+
+.eliteoff
+MOV R0,#0
+STRB R0,elite
+MOV PC,R14       ;removed S /sh
+
+
+.elite
+EQUD 0
+
+
+.mode4tab
+]
+O%+=1024
+P%+=1024
+[OPTp
+
+
+.lastmode
+EQUD 0
+
+
+.reinit
+MOV R0,#255
+STRB R0,lastmode
+MOV PC,R14
+
+
+.pointer_on
+EQUS "Pointer 1"+CHR$0
+ALIGN
+
+
+.updatescreen2
+TST R0,#%10000
+BEQ updatescreen5
+LDRB R0,lastmode
+CMP R0,#2
+BEQ skip_mode2
+SWINE &116
+SWINE &109 ; MODE 9
+ADR R0,pointer_on : SWI "OS_CLI"
+MOV R0,#106 : MOV R1,#&82 : SWI "OS_Byte"
+SWI "OS_RemoveCursors"
+MOV R0,#2 : STRB R0,lastmode
+:
+.skip_mode2
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#%11111
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#3
+:
+ADR R8,mode2tab
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6] ; no of vertical chars
+MUL R4,R2,R11
+MOV R4,R4,LSL#3
+;MOV R4,R2,LSL#8
+.loop2
+;MOV R2,#80
+.loop1
+ADD R11,R9,#1
+:
+LDRB R0,[mem,R7]
+LDR  R5,[R8,R0,LSL#1]
+STRB R5,[R9,#0]
+MOV R5,R5,LSR#8
+STRB R5,[R9,#1]
+ADD R7,R7,#1
+:
+LDRB R0,[mem,R7]
+LDR  R5,[R8,R0,LSL#1]
+STRB R5,[R9,#160] ; 160=line length in mode 9
+MOV R5,R5,LSR#8
+STRB R5,[R11,#160] ; R11=R9+1
+ADD R7,R7,#1
+:
+LDRB R0,[mem,R7]
+LDR  R5,[R8,R0,LSL#1]
+STRB R5,[R9,#160*2]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#160*2]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDR  R5,[R8,R0,LSL#1]
+STRB R5,[R9,#160*3]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#160*3]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDR  R5,[R8,R0,LSL#1]
+STRB R5,[R9,#160*4]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#160*4]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDR  R5,[R8,R0,LSL#1]
+STRB R5,[R9,#160*5]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#160*5]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDR R5,[R8,R0,LSL#1]
+STRB R5,[R9,#160*6]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#160*6]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDR  R5,[R8,R0,LSL#1]
+STRB R5,[R9,#160*7]
+MOV R5,R5,LSR#8
+STRB R5,[R11,#160*7]
+ADD R7,R7,#1 : CMP R7,#&8000 : MOVEQ R7,R12
+:
+ADD R9,R9,#2
+:
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+LDRB R2,[R6,#1] ; no of horiz chars
+ADD R9,R9,#160*8:SUB R9,R9,R2,LSL#1
+SUBS R4,R4,R2,LSL#3 ; #640
+BGT loop2
+:
+LDMFD R13!,{R2-R12,pc}   ;removed ^ /sh
+
+
+.mode2tab
+]
+O%+=512
+P%+=512
+[OPTp
+
+
+.mode1tab
+]
+O%+=256
+P%+=256
+[OPTp
+
+
+.pointer_on
+EQUS "Pointer 1"+CHR$0
+ALIGN
+
+
+.updatescreen1
+TST R0,#%10000
+BEQ updatescreen4
+:
+LDRB R0,lastmode
+CMP R0,#1
+BEQ skip_mode1
+SWINE &116
+SWINE &101 ; MODE 1
+ADR R0,pointer_on : SWI "OS_CLI"
+MOV R0,#106 : MOV R1,#&82 : SWI "OS_Byte"
+SWI "OS_RemoveCursors"
+MOV R0,#1 : STRB R0,lastmode
+:
+.skip_mode1
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#%11111
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#3
+:
+ADR R8,mode1tab
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+MOV R4,R4,LSL#3
+;MOV R4,R2,LSL#8
+;MOV R4,#&5000
+.loop2
+;MOV R2,#80
+.loop1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#0]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*2]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*3]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*4]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*5]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*6]
+ADD R7,R7,#1
+LDRB R0,[mem,R7]
+LDRB R5,[R8,R0]
+STRB R5,[R9,#80*7]
+ADD R7,R7,#1 : CMP R7,#&8000 : MOVEQ R7,R12
+:
+ADD R9,R9,#1
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+LDRB R2,[R6,#1] ; no of horiz chars
+:
+ADD R9,R9,#640 : SUB R9,R9,R2
+SUBS R4,R4,R2,LSL#3 ; #640
+BHI loop2
+:
+LDMFD R13!,{R2-R12,pc}   ;removed ^ /sh
+
+
+.updatescreen7
+LDRB R0,lastmode
+CMP R0,#7
+BEQ not_newmode7
+ADR R0,mode7copy
+MOV R1,#1020
+MOV R2,#0
+.cls7
+STR R2,[R0,R1]
+SUBS R1,R1,#4
+BPL cls7
+:
+SWI &116
+SWI &107 ; MODE 7
+ADR R0,pointer_on : SWI "OS_CLI"
+MOV R0,#106 : MOV R1,#&82 : SWI "OS_Byte"
+SWI "OS_RemoveCursors"
+MOV R0,#7 : STRB R0,lastmode
+.not_newmode7
+SWI &11E ; PRINTTAB(0,0)
+:
+;LDR R5,crt_regs_addr
+MOV R5,R6
+LDRB R6,[R5,#12]
+AND R6,R6,#&3F
+EOR R6,R6,#&20
+ADD R6,R6,#&74
+AND R6,R6,#&FF
+LDRB R7,[R5,#13]
+ADD R7,R7,R6,LSL#8
+:
+;MOV R7,#&7C00
+:
+;ADD mem,mem,#&7C00
+MOV R4,#0
+;SUB R4,R4,#1
+;ADD mem,mem,#1
+:
+ADR R8,mode7copy:;SUB R8,R8,#&7C00
+:
+MOV R9,#0 ; X
+MOV R10,#0 ; Y
+SUB R9,R9,#1
+:
+.mode7loop
+ADD R9,R9,#1 : CMP R9,#40 : MOVEQ R9,#0 : ADDEQ R10,R10,#1
+LDRB R0,[mem,R7]
+CMP R0,#&7F : MOVEQ R0,#255
+CMP R0,#&1A : MOVEQ R0,#&9A ; fix Zalaga???
+CMP R0,#&1D : MOVEQ R0,#&9D ; fix Zalaga???
+CMP R0,#32 : MOVLT R0,#32
+:
+CMP R0,#&60 : MOVEQ R0,#&5F : BEQ print7
+CMP R0,#&5F : MOVEQ R0,#&23 : BEQ print7
+CMP R0,#&23 : MOVEQ R0,#&60
+.print7
+:
+LDRB R11,[R8] ; mode7copy
+CMP R11,R0
+BEQ noprint7
+SWI &100+31 ; PRINTTAB(
+MOV R11,R0
+MOV R0,R9 : SWI "OS_WriteC"
+MOV R0,R10 : SWI "OS_WriteC"
+MOV R0,R11 : SWI "OS_WriteC"
+STRB R0,[R8] ; mode7copy
+.noprint7
+ADD R8,R8,#1
+:
+ADD R7,R7,#1
+CMP R7,#&8000
+MOVEQ R7,#&7C00
+ADD R4,R4,#1
+CMP R4,#25*40
+BNE mode7loop
+:
+LDMFD R13!,{R2-R12,pc}   ;removed ^ /sh
+
+
+.mode7copy
+]
+P%+=1024:O%+=1024
+[OPTp
+
+
+.writesheila
+STMFD R13!,{R14}
+SWI &40500 ; "XI/O_Podule_Hardware"
+ADD R1,R1,#&2000 ; base address of User VIA
+CMP R2,#5:\BEQ writesheila5
+CMP R2,#4:\MOVEQ R2,#6
+CMP R2,#8 :\ BEQ writesheila8
+CMP R2,#6 :\ BEQ writesheila6
+CMP R2,#7 :\ BEQ writesheila7
+CMP R2,#9 :\ BEQ writesheila9
+STRB R0,[R1,R2,LSL#2]
+LDRB R0,[R1]
+LDMFD R13!,{PC}
+
+
+.writesheila6
+MOV R0,R0,LSL#1
+STRB R0,[R1,#6 << 2]
+LDRB R2,[R1,#7 << 2]
+BIC R2,R2,#1
+ORR R2,R2,R0,LSR#8
+STRB R2,[R1,#7 << 2]
+LDMFD R13!,{PC}
+
+
+.writesheila8
+MOV R0,R0,LSL#1
+STRB R0,[R1,#8 << 2]
+LDRB R2,[R1,#9 << 2]
+BIC R2,R2,#1
+ORR R2,R2,R0,LSR#8
+STRB R2,[R1,#9 << 2]
+LDMFD R13!,{PC}
+
+
+.writesheila7
+LDRB R2,[R1,#7 << 2]
+AND R2,R2,#1
+ADD R2,R2,R0,LSL#1
+STRB R2,[R1,#7 << 2]
+LDMFD R13!,{PC}
+
+
+.writesheila9
+LDRB R2,[R1,#9 << 2]
+AND R2,R2,#1
+ADD R2,R2,R0,LSL#1
+STRB R2,[R1,#9 << 2]
+LDMFD R13!,{PC}
+
+
+.writesheila5
+LDRB R2,[R1,#7 << 2]
+AND R2,R2,#1
+ADD R2,R2,R0,LSL#1
+STRB R2,[R1,#5 << 2]
+LDMFD R13!,{PC}
+
+
+.readsheila
+STMFD R13!,{R14}
+SWI &40500 ; "XI/O_Podule_Hardware"
+ADD R1,R1,#&2000 ; base address of User VIA
+CMP R0,#8 : CMPNE R0,#6 : CMPNE R0,#4 : \BEQ readsheila2
+CMP R0,#9 : CMPNE R0,#7 : CMPNE R0,#5
+LDRB R0,[R1,R0,LSL#2]
+\MOVEQ R0,R0,LSR#1
+LDMFD R13!,{PC}
+
+
+.readsheila2
+LDRB R2,[R1,R0,LSL#2]
+ADD R0,R0,#1
+LDRB R0,[R1,R0,LSL#2]
+ADD R0,R2,R0,LSL#8
+MOV R0,R0,LSR#1
+AND R0,R0,#&FF
+LDMFD R13!,{PC}
+
+
+.pokeserialnumber
+STMFD R13!,{R14}
+STR R1,buffer
+MOV R1,#22 : MOV R1,R1,LSR#1
+STR R1,buffer+4
+ADR R1,buffer
+SWI "Wimp_GetIconState"
+LDR R1,[R1,#28]
+MOV R0,#30
+MOV R2,#%1101011
+ADD R2,R2,#%01101110 << 8
+ADD R2,R2,#%11110100 << 16
+ADD R2,R2,#%00111011 << 24
+ADR R3,serialnumber
+SUB R3,R3,#1
+SUB R1,R1,#1
+.serialloop
+LDRB R4,[R3,R0]
+EOR R4,R4,R2
+STRB R4,[R1,R0]
+MOV R2,R2,ROR R0
+SUBS R0,R0,#1
+BNE serialloop
+LDMFD R13!,{PC}
+
+
+.buffer
+EQUS STRING$(48," ")
+ALIGN
+
+
+.install_exit
+STMFD R13!,{R14}
+STR R0,wimp_mode
+MOV R0,#11 ; exit
+MOV R1,#0
+SWI "XOS_ChangeEnvironment"
+STR R1,old_handler
+ADR R1,exit_han
+SWI "XOS_ChangeEnvironment"
+LDMFD R13!,{PC}
+
+
+.remove_exit
+STMFD R13!,{R14}
+MOV R0,#11
+LDR R1,old_handler
+SWI "XOS_ChangeEnvironment"
+LDMFD R13!,{PC}
+
+
+.exit_han
+LDR R0,wimp_mode
+SWI "XWimp_SetMode"
+MOV R0,#11
+LDR R1,old_handler
+SWI "XOS_ChangeEnvironment"
+LDR R0,register_count
+SUBS R0,R0,#1
+STR R0,register_count
+SWINE "OS_Exit"
+ADR R3,kill_6502
+SWI "OS_ExitAndDie"
+
+
+.kill_6502
+EQUS "6502Support"+CHR$0
+ALIGN
+
+
+.wimp_mode
+EQUD 0
+.old_handler
+EQUD 0
+
+
+.register
+LDR R0,register_count
+ADD R0,R0,#1
+STR R0,register_count
+MOV PC,R14
+
+
+.serv
+CMP R1,#&27
+MOVNE pc,R14
+MOV R0,#0
+STR R0,register_count
+MOV PC,R14
+
+
+.deregister
+LDR R0,register_count
+SUB R0,R0,#1
+STR R0,register_count
+MOV PC,R14
+
+
+.register_count
+EQUD 0
+
+
+.swicode     ;should update to preserve regs on pre-RO5 /sh
+CMP R11,#(EndJumpTable-JumpTable)/4
+ADDCC PC,PC,R11,LSL#2
+B UnknownSWI
+.JumpTable
+B updatescreen
+B updatescreen7
+B init
+B getkeyaddr
+B getkdata
+B checkkdata
+B register
+B deregister
+B reinit
+B readkeymapaddr
+B install_exit
+B remove_exit
+B readsheila
+B writesheila
+B pokeserialnumber
+B getsync
+B geteleckeys
+B getelectronmap
+.EndJumpTable
+.UnknownSWI
+ADR R0,errmess
+ORRS PC,R14,#1<<28
+
+
+.errmess
+EQUD &1E6
+EQUS "Unknown <module> operation"
+EQUB 0
+ALIGN
+
+
+.switable
+EQUS "6502":EQUB 0
+EQUS "UpdateScreen":EQUB 0
+EQUS "UpdateScreen7":EQUB 0
+EQUS "Init":EQUB 0
+EQUS "Getkeyaddr":EQUB 0
+EQUS "Getkdata":EQUB 0
+EQUS "Checkkdata":EQUB 0
+EQUS "Register":EQUB 0
+EQUS "DeRegister":EQUB 0
+EQUS "ReInit":EQUB 0
+EQUS "ReadKeyMapAddress" : EQUB 0
+EQUS "InstallExitHandler" : EQUB 0
+EQUS "RemoveExitHandler" : EQUB 0
+EQUS "ReadSheila" : EQUB 0
+EQUS "WriteSheila" : EQUB 0
+EQUS "Sound" : EQUB 0
+EQUS "GetSync" : EQUB 0
+EQUS "GetElectronKeys" : EQUB 0
+EQUS "GetElectronMap" : EQUB 0
+EQUB 0
+ALIGN
+
+
+.serialnumber
+EQUS STRING$(30,CHR$0)
+
+
+]
+NEXT
+:
+OSCLI"Load <6502Em$Dir>.AllSource.65SupData.revtable "+STR$~(code+revtable)
+OSCLI"Load <6502Em$Dir>.AllSource.65SupData.mode2tab "+STR$~(code+mode2tab)
+OSCLI"Load <6502Em$Dir>.AllSource.65SupData.mode1tab "+STR$~(code+mode1tab)
+OSCLI"Load <6502Em$Dir>.AllSource.65SupData.mode0tab "+STR$~(code+mode4tab)
+OSCLI"Load <6502Em$Dir>.AllSource.65SupData.mode5tab "+STR$~(code+mode4tab+512)
+OSCLI"Load <6502Em$Dir>.AllSource.65SupData.keymap "+STR$~(code+keymap)
+OSCLI"Load <6502Em$Dir>.AllSource.65SupData.keymap "+STR$~(code+keymap_shift)
+:
+PROCelectron_keys
+:
+OSCLI"SAVE <6502Em$Res>.65Support "+STR$~code+" "+STR$~O%
+*SETTYPE <6502Em$Res>.65Support MODULE
+REM*/Z80Mod
+END
+
+
+DEFFNprint(R)
+LOCALI%
+[OPTp
+MOV R1,R,ROR#28
+]
+FORI%=0 TO 7
+[OPT p
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+SWI "OS_WriteC"
+MOV R1,R1,ROR#28
+]
+NEXT
+[OPTp
+SWI &120
+]
+=""
+
+
+DEFFNprint4a(R)
+LOCALI%
+[OPTp
+MOV R1,R,ROR#28
+]
+FORI%=0 TO 3
+[OPT p
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+SWI "OS_WriteC"
+MOV R1,R1,ROR#28
+]
+NEXT
+[OPTp
+;SWI &120
+]
+=""
+
+
+DEFFNprint4(R)
+LOCALI%
+[OPTp
+MOV R1,R,ROR#12
+]
+FORI%=0 TO 3
+[OPT p
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+SWI "OS_WriteC"
+MOV R1,R1,ROR#28
+]
+NEXT
+[OPTp
+SWI &120
+]
+=""
+
+
+DEFFNprint2(R)
+LOCALI%
+[OPTp
+MOV R1,R,ROR#4
+]
+FORI%=0 TO 1
+[OPT p
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+SWI "OS_WriteC"
+MOV R1,R1,ROR#28
+]
+NEXT
+=""
+
+
+DEFFNprintCR(R)
+LOCALI%
+[OPTp
+MOV R1,R,ROR#28
+]
+FORI%=0 TO 7
+[OPT p
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+SWI "OS_WriteC"
+MOV R1,R1,ROR#28
+]
+NEXT
+[OPT p
+MOV R0,#10
+SWI "OS_WriteC"
+MOV R0,#13
+SWI "OS_WriteC"
+]
+=""
+
+
+DEFFNprints(A$)
+[OPTp
+SWI "OS_WriteS"
+EQUS A$
+EQUB 10
+EQUB 13
+EQUB 0
+ALIGN
+]
+=""
+
+
+DEFFNprintno(H%)
+[OPTp
+.print(H%)
+SWI (&100+ASC(LEFT$(STR$~H%,1)))
+SWI (&100+ASC(RIGHT$(STR$~H%,1)))
+FNfetch2(1)
+]
+=""
+
+
+DEFFNprintbin(R)
+[OPTp
+MOVS R0,R,LSL#25
+SWICC &130
+SWICS &131
+MOVS R0,R0,LSL#1
+SWICC &130
+SWICS &131
+MOVS R0,R0,LSL#1
+SWICC &130
+SWICS &131
+MOVS R0,R0,LSL#1
+SWICC &130
+SWICS &131
+MOVS R0,R0,LSL#1
+SWICC &130
+SWICS &131
+MOVS R0,R0,LSL#1
+SWICC &130
+SWICS &131
+MOVS R0,R0,LSL#1
+SWICC &130
+SWICS &131
+MOVS R0,R0,LSL#1
+SWICC &130
+SWICS &131
+SWI &10A
+SWI &10D
+]
+=""
+
+
+DEFPROCelectron_keys
+A%=electronmap+code
+:
+FORI%=0 TO 1023 STEP 4
+ A%!I%=&FF
+NEXT
+:
+REPEAT
+ READ X%,Y%,Z%
+ x%=X% DIV 16
+ X%=(X%*16+x%) AND &FF
+ A%!(X%*4)=(Y%<<8)+Z%
+UNTIL X%=&FF AND Z%=&FF AND Y%=&FF
+ENDPROC
+
+
+REM internal key,row,column
+
+DATA 0,0,13 : REM Escape
+DATA 1,0,13
+
+DATA &11,0,12
+DATA &21,0,11
+DATA &31,0,10
+DATA &41,0,9
+DATA &51,0,8
+DATA &61,0,7
+DATA &71,0,6
+DATA &81,0,5
+DATA &91,0,4
+DATA &A1,0,3
+DATA &B1,0,2
+
+DATA &C1,0,1 : REM Left
+DATA &26,0,1
+
+DATA &D1,0,0 : REM Right
+DATA &46,0,0
+
+DATA &E1,3,1 : REM backspace
+
+DATA &62,1,13 : REM Caps Lock/Func
+DATA &D5,1,13
+
+DATA &72,1,12
+DATA &82,1,11
+DATA &92,1,10
+DATA &A2,1,9
+DATA &B2,1,8
+DATA &C2,1,7
+DATA &D2,1,6
+DATA &E2,1,5
+DATA &F2,1,4 : REM O
+
+DATA &03,1,3 : REM P
+
+DATA &13,1,2 : REM Up
+DATA &95,1,2
+
+DATA &23,1,1 : REM Down
+DATA &36,1,1
+
+DATA &33,1,0 : REM Copy
+DATA &53,1,0
+
+DATA &B3,2,13 : REM Ctrl
+DATA &16,2,13
+
+DATA &C3,2,12
+DATA &D3,2,11
+DATA &E3,2,10
+DATA &F3,2,9  : REM F
+
+DATA &04,2,8  : REM G
+DATA &14,2,7
+DATA &24,2,6
+DATA &34,2,5
+DATA &44,2,4
+DATA &54,2,3
+DATA &64,2,2
+DATA &74,2,1 : REM return
+
+DATA &C4,3,13 : REM shift
+DATA &E4,3,12 : REM Z
+DATA &F4,3,11 : REM X
+
+DATA &05,3,10 : REM C
+DATA &15,3,9
+DATA &25,3,8
+DATA &35,3,7
+DATA &45,3,6
+DATA &55,3,5
+DATA &65,3,4
+DATA &75,3,3
+DATA &85,3,13 : REM shift
+DATA &43,3,1 : REM Delete
+DATA &F5,3,0 : REM Space
+
+DATA &FF,&FF,&FF
+
+
+DEF FNadr(s%,x%)
+REM The instruction sequence must be of FIXED length
+a%=x%-P%-8
+IF (p AND 2) THEN
+ IF a%>=0 THEN
+  [OPT p
+   ADD s%,PC,#(a% AND &000003FC)
+   ADD s%,s%,#(a% AND &FFFFFC00)
+  ]
+ ELSE
+  a%=-a%
+  [OPT p
+   SUB s%,PC,#(a% AND &000003FC)
+   SUB s%,s%,#(a% AND &FFFFFC00)
+  ]
+ ENDIF
+ELSE
+ P%+=8:O%+=8
+ENDIF
+=""

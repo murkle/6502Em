@@ -1,0 +1,10 @@
+REM > Platform
+SYS &2006D,0 TO A% ; F% : REM XOS_PlatformFeatures
+CASE TRUE OF
+WHEN (F% AND 1)=1:platform%=0 : REM ARM2/3/6/7
+WHEN (A% AND %1111)=0 : platform%=0 : REM ARM2/3/6/7
+WHEN (A% AND %11000000)<>0:platform%=2 : REM 32 bit (Iyonix)
+OTHERWISE:platform%=1 : REM StrongARM
+ENDCASE
+
+OSCLI "Set 6502Em$Platform "+STR$platform%

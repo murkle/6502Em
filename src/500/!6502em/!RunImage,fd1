@@ -1,0 +1,3167 @@
+REM > !RunImage v5.00 1/3/14
+REM 6502Em (desktop frontend for binaries)
+REM (c) Michael and Anne Borcherds, 1995-2005
+REM Updated in 2014 for 32bit ARMv7 and Raspberry Pi, by Stephen Harrison
+REM LOCK ROMRAM,memory,roms,osword7F_drive%,osword72_drive%,paging%
+:
+betatest%=FALSE
+version$="5.00 (1st March 2014)"
+IF betatest% THEN
+ version$="5.00b (1st February 2014)"
+ PRINT version$;" ***BETA TEST*** not for public release "
+ PRINT ''"This version is for testing purposes only, continue Y/N? ";
+ key$=GET$
+ IF key$="Y" OR key$="y" THEN key$="Y" ELSE END
+ENDIF
+:
+ON ERROR SYS "XWimp_CloseDown":SYS "XWimp_ReportError","    Fatal internal error "+STR$ ERL+": "+REPORT$,1,"6502Em":QUIT
+hires%=FALSE
+REM test for RISC OS 5 and if so, force hires/256 colour mode
+IF INKEY-256=&AA THEN riscos5%=TRUE:hires%=TRUE ELSE riscos5%=FALSE
+IF riscos5% THEN
+ file_xxx$="<6502Em$Res>.5file_xxx"
+ no_xxx$="<6502Em$Res>.5no_xxx"
+ELSE
+ file_xxx$="<6502Em$Res>.file_xxx"
+ no_xxx$="<6502Em$Res>.no_xxx"
+ENDIF
+:
+osword7F_drive%=1 : REM drive accessed for protected DFS discs
+osword72_drive%=0 : REM drive accessed for protected ADFS discs
+paging%=TRUE
+top%=HIMEM
+:
+REM the following memory management is messy and relies on Wimpslot exactly 928kb
+REM this allows the emulator code to load at a fixed address and for this BASIC code
+REM to interact with ROM table at &97000-&9700F...and it seems to work on RISC OS 5...
+:
+HIMEM=HIMEM-256*1024:code=HIMEM
+!HIMEM=0:SYS "OS_ReadVarVal","6502Em$Printer",HIMEM,255 TO ,,len%:?(HIMEM+len%)=13:S$=$(HIMEM):printer%=VALS$
+IF NOTriscos5% THEN !HIMEM=0:SYS "OS_ReadVarVal","6502Em$HiRes",HIMEM,255 TO ,,len%:?(HIMEM+len%)=13:S$=$(HIMEM):IF FNupper(LEFT$(S$,3))="YES" THEN hires%=TRUE
+:
+dynamicarea%=0
+SYS &20066,0,-1,328*1024,-1,%010000000,328*1024,,,"6502Em screen" TO ,dynamicarea%,,sprite,,dynamicareasize% ; F
+IF (F AND 1)<>0 THEN sprite=0 ELSE sprite!4=0
+IF dynamicareasize%<>328*1024 THEN ERROR 0,"Failed to claim dynamic area"
+:
+HIMEM=HIMEM-(64+64)*1024 : REM 64k BBC memory map + 32k Master extra memory + 256 bytes variables + spare
+memory=HIMEM+64*1024
+:
+IF memory<>&A0000 THEN ERROR 0,"6502Em initialisation: Fatal memory error"
+sheila=memory-&200 : REMFORI%=&100 TO &1FF STEP 4:sheila!I%=0:NEXT
+:
+HIMEM=HIMEM-17*16*1024:roms=HIMEM
+HIMEM=HIMEM-160*1024:REMcode=HIMEM
+romsize%=&4000
+filetype%=&BBC
+:
+REM volume between 0 and 127
+LIBRARY "<6502Em$Res>.Sound7a"
+:
+PROCtemplates
+PROCinitBBC
+PROCsound_init
+PROCnewmachine
+PROCinit
+PROCpoll
+END
+
+
+DEF PROCinstall(sprite$)
+LOCAL sx%,sy%,sm%,px%,py%
+DIM text_buff &100, sprite_buff &100
+SYS "Wimp_SpriteOp",40,,sprite$ TO ,,,sx%,sy%,,sm%
+SYS "OS_ReadModeVariable",sm%,4 TO ,,px% : sx%=sx%<<px%
+SYS "OS_ReadModeVariable",sm%,5 TO ,,py% : sy%=sy%<<py%
+!q%=-1
+q%!4=0:q%!8=-16:q%!12=q%!4+sx%:q%!16=20+sy%
+REMq%!20=&1700312B (filled icon)
+q%!20=&1700310B
+!(q%+24)=text_buff
+!(q%+28)=sprite_buff
+$text_buff=sprite$
+$sprite_buff="S"+sprite$
+!(q%+32)=&100
+SYS "Wimp_CreateIcon",,q% TO !q%
+bar_hand=!q%
+ENDPROC
+
+
+DEF PROCreinstall(sprite$)
+$sprite_buff="S"+sprite$
+$text_buff=sprite$
+buffer!0=-2
+buffer!4=bar_hand
+REMbuffer!8=0
+REMbuffer!12=0
+buffer!8=&00800080
+buffer!12=&00800080
+SYS"Wimp_SetIconState",,buffer
+REMSYS"Wimp_ForceRedraw",-2,0,0,&FFFF,&FFFF
+buffer!8=0
+buffer!12=&00800080
+SYS"Wimp_SetIconState",,buffer
+ENDPROC
+
+
+DEF PROCtemplates
+DIM t 4:$t="TASK"
+SYS "Wimp_Initialise",200,!t,"6502Em" TO RO%,hand%
+DIM q% 256, q2% 256, iconmenu% 300, miscmenu% 200,rommenu% 800, machine_menu% 200, oscli_menu 20, framemenu% 28+24*8, modemenu% 28+24*8
+DIM pokemenu% 50, pokevalid% 12, poketext% 12, drag 40
+DIM temp_regs 12*4, buffer &100
+PROCclearmem(HIMEM,top%)
+PROCinstall("OS 1.2")
+:
+REMPROCreadpatches
+PROCreadspeeds
+:
+IF RO%>299 THEN
+ SYS "OS_Byte",161,140 TO ,,t% : THREED%=-(t% AND 1)
+ IF THREED%=TRUE THEN SYS "Wimp_OpenTemplate",,"<6502Em$Res>.Template3D" ELSE SYS "Wimp_OpenTemplate",,"<6502Em$Res>.Templates"
+ SYS "Wimp_LoadTemplate",,-1,,,-1,"info" TO ,A%,B%
+ SYS "Wimp_LoadTemplate",,-1,,,-1,"xfer_send" TO ,C%,D%
+ SYS "Wimp_LoadTemplate",,-1,,,-1,"xfer_send2" TO ,E%,F%
+ SYS "Wimp_LoadTemplate",,-1,,,-1,"config" TO ,G%,H%
+ELSE
+ SYS "Wimp_OpenTemplate",,"<6502Em$Res>.Templates"
+ A%=700 : B%=300 : C%=400 : D%=350 : E%=C% : F%=D%
+ G%=2000:H%=2000
+ENDIF
+DIM buffer2 A%, icon3 B%, xfer1 C%+4, xfer2 D%, xfer3 E%+4, xfer4 F%
+DIM config G%, config2 H%+4
+SYS "Wimp_LoadTemplate",,buffer2,icon3,icon3+B%,-1,"info"
+SYS "Wimp_LoadTemplate",,xfer1,xfer2,xfer2+D%,-1,"xfer_send"
+SYS "Wimp_LoadTemplate",,xfer3,xfer4,xfer4+F%,-1,"xfer_send2"
+SYS "Wimp_LoadTemplate",,config,config2,config2+H%,-1,"config"
+SYS "Wimp_CloseTemplate"
+SYS "Wimp_CreateWindow",,xfer1 TO A%:xfer%=A%
+SYS "Wimp_CreateWindow",,xfer3 TO A%:xfer2%=A%
+SYS "Wimp_CreateWindow",,config TO A%:config%=A% : config_open%=FALSE
+SYS "Wimp_CreateWindow",,buffer2 TO A%:info%=A%
+:
+!buffer=info%
+buffer!4=9
+SYS "Wimp_GetIconState",,buffer
+$(buffer!28)=version$+CHR$0
+:
+!buffer=info%
+buffer!4=11
+SYS "Wimp_GetIconState",,buffer
+OSCLI"Load <6502Em$Res>.SerialNo "+STR$~(buffer!28)
+ENDPROC
+
+
+DEF PROCinit
+modechecked%=FALSE
+DIM wimp_mode_copy 256
+SYS "OS_GetEnv" TO A$
+IF RIGHT$(A$,1)=" " THEN
+ I%=0
+ REPEATI%+=1:UNTILMID$(A$,LENA$-I%,1)<>" "
+ A$=LEFT$(A$,LENA$-I%)
+ENDIF
+IF RIGHT$(A$,1)=CHR$34 THEN A$=LEFT$(A$,LENA$-1)
+IF LEFT$(A$,1)=CHR$34 THEN A$=RIGHT$(A$,LENA$-1)
+I%=0
+REPEATI%+=1:UNTILMID$(A$,LENA$-I%,1)=" " OR I%=LENA$
+A$=RIGHT$(A$,I%)
+IF FNupper(MID$(A$,LENA$-9,10))<>".!RUNIMAGE" THEN PROCsnap_load(A$):IF type$<>"UEF File!" PROCBBC
+ENDPROC
+
+
+DEF PROCpoll
+ON ERROR IF FNreport(REPORT$,ERR<>1)=2 THEN PROCquit
+:
+REPEAT
+ mask%=%1100000110011
+ SYS "Wimp_Poll",mask%,q% TO action%
+ CASE action% OF
+  WHEN  2    : SYS "Wimp_OpenWindow",,q%:IF !q%=config% THEN config_open%=TRUE
+  WHEN  3    : SYS "Wimp_CloseWindow",,q%:IF !q%=config% THEN config_open%=FALSE
+  WHEN  6    : PROCclick
+  WHEN  7    : PROCsave
+  WHEN  8    : PROCkey
+  WHEN  9    : PROCdecodemenu
+  WHEN 17,18 : PROCmessage
+ ENDCASE
+ :
+UNTILFALSE
+ENDPROC
+
+
+DEF PROCmessage
+CASE q%!16 OF
+ WHEN 0 : PROCquit
+ :
+ WHEN 2 :
+  IF q%!12=myref% THEN
+   SYS "OS_WriteN",q%+44 TO A$
+   IF A$="<Wimp$Scrap>" THEN
+   SYS "XOS_ReadVarVal","Wimp$Scrap",,-1 TO ,,A%
+   IF A%=0 THEN SYS "Wimp_ReportError","    Scrap file not set",1,"6502Em":ENDPROC
+  ENDIF
+  IF save_sprite% THEN
+   PROCsprite_save(A$)
+   !buffer=xfer2%
+  ELSE
+   PROCsnap_save(A$)
+   !buffer=xfer%
+  ENDIF
+  :
+  IF LEFT$(A$,6)<>"<Wimp$" THEN
+   buffer!4=1
+   SYS "Wimp_GetIconState",,buffer
+   $(buffer!28)=A$
+  ENDIF
+  q%!16=3 : q%!12=q%!8 : SYS "Wimp_SendMessage",17,q%,q%!4
+  ENDIF
+ :
+ WHEN 3
+  SYS "OS_WriteN",q%+44 TO A$
+  CASE q%!40 OF
+   WHEN &B22 : PROCdfsimage(A$)
+   WHEN filetype% : PROCsnap_load(A$)
+   WHEN &FFB,&FFE : PROCfile_load(A$):PROCBBC
+  ENDCASE
+ :
+ WHEN 5 :
+  CASE q%!40 OF
+   WHEN &B22 :
+    q%!16=4:q%!12=q%!8:SYS "Wimp_SendMessage",17,q%,q%!20
+    SYS "OS_WriteN",q%+44 TO A$
+    PROCdfsimage(A$)
+   WHEN filetype% : REM Snapshot
+    q%!16=4:q%!12=q%!8:SYS "Wimp_SendMessage",17,q%,q%!20
+    SYS "OS_WriteN",q%+44 TO A$
+    PROCsnap_load(A$) : IF type$<>"UEF File!" PROCBBC
+   OTHERWISE
+    IF NOTINKEY-1 THEN
+     SYS "OS_WriteN",q%+44 TO A$
+     F$=A$
+     SYS "OS_File",5,F$ TO type%,,load%,exec%,length%
+     IF type%=2 AND LEFT$(RIGHT$(F$,LENF$-LENFNleaf(F$)-1),1)<>"!" THEN ENDPROC
+     IF type%=2 THEN F$=A$+".!Run":SYS "OS_File",5,F$ TO type%,,load%,exec%,length%:IF (load% AND &FFF00)=&BBC00 THEN q%!16=4:q%!12=q%!8:SYS "Wimp_SendMessage",17,q%,q%!20:PROCsnap_load(F$) : PROCBBC : ENDPROC
+     IF type%=0 THEN F$=A$+"."+RIGHT$(A$,LENA$-LENFNleaf(A$)-2):SYS "OS_File",5,F$ TO type%,,load%,exec%,length%
+     IF ((load%>>>16)=0 OR (load%>>>16)=&FFFF OR (load%>>>16)=&00FF) AND (load% AND &FFFF)<&8000 AND type%=1 THEN
+      q%!16=4:q%!12=q%!8:SYS "Wimp_SendMessage",17,q%,q%!20
+      PROCfile_load(F$)
+      PROCBBC
+     ENDIF
+    ENDIF
+  ENDCASE
+ :
+ WHEN &400C1 : REMPROCmode
+ENDCASE
+ENDPROC
+
+
+DEF PROCkey
+CASE !q% OF
+ WHEN config%
+  IF q%!24=13 THEN
+   CASE q%!4 OF
+    WHEN 14
+     SYS "Wimp_GetIconState",,q%
+     framerate%=VAL $(q%!28):PROCshowframerate(framerate%)
+    WHEN 16
+     SYS "Wimp_GetIconState",,q%
+     PROCnewspeed(VAL$(q%!28))
+    WHEN 18
+     SYS "Wimp_GetIconState",,q%
+     PROCnewBBCmode(VAL$(q%!28))
+    OTHERWISE
+     SYS "Wimp_ProcessKey",q%!24
+   ENDCASE
+  ENDIF
+ :
+ WHEN xfer%,xfer2%
+  IF q%!4=1 AND q%!24=13 THEN
+   !buffer=!q%
+   buffer!4=1
+   SYS "Wimp_GetIconState",,buffer
+   IF !q%=xfer% THEN PROCsnap_save($(buffer!28)) ELSE PROCsprite_save($(buffer!28))
+   SYS "Wimp_CreateMenu",-1
+  ELSE
+   SYS "Wimp_ProcessKey",q%!24
+  ENDIF
+ENDCASE
+ENDPROC
+
+
+DEF PROCclick
+mx%=q%!0
+my%=q%!4
+mb%=q%!8
+h%=q%!12
+i%=q%!16
+IF h%=config% THEN PROCconfig:ENDPROC
+:
+IF h%=-2 THEN
+ IF mb%=2 THEN PROCopenmenu(iconmenu%,mx%-64,96+7*44)
+ :
+ IF mb%=1 THEN
+  REMPROCreadCSD
+  REMPROCBBC
+  PROCopenconfig
+ ENDIF
+ :
+ IF mb%=4 THEN
+  IF INKEY-1 OR INKEY-2 THEN PROCreadCSD
+  PROCBBC
+ ENDIF
+ENDIF
+:
+IF i%=3 AND (h%=xfer% OR h%=xfer2%) THEN SYS "Wimp_CreateMenu",-1
+:
+IF (h%=xfer% OR h%=xfer2%) AND i%=2 AND (mb%=1 OR mb%=4) THEN
+ !buffer=h%
+ buffer!4=1
+ SYS "Wimp_GetIconState",,buffer
+ IF h%=xfer% THEN PROCsnap_save($(buffer!28)) ELSE PROCsprite_save($(buffer!28))
+ IF mb%<>1 THEN SYS "Wimp_CreateMenu",-1
+ENDIF
+:
+IF h%=xfer% AND i%=0 THEN
+ save_sprite%=FALSE
+ !xfer1=xfer% : SYS "Wimp_GetWindowInfo",,xfer1
+ !buffer=xfer% : buffer!4=0 : SYS "Wimp_GetIconState",,buffer
+ drag!0=0
+ drag!8=xfer1!4+buffer!8
+ drag!12=xfer1!16+buffer!12
+ drag!16=xfer1!4+buffer!16
+ drag!20=xfer1!16+buffer!20
+ SYS "OS_Byte",161,&1C TO ,,byte%
+ IF RO%>299 AND (byte% AND 2)=2 THEN
+  drag!4=7
+  solid%=TRUE
+ ELSE
+  drag!4=5
+  solid%=FALSE
+ ENDIF
+ drag!24=-100
+ drag!28=-100
+ drag!32=30000
+ drag!36=30000
+ IF solid% THEN SYS "DragASprite_Start",%11000101,1,"file_BBC",drag+8 ELSE SYS "Wimp_DragBox",,drag
+ENDIF
+:
+IF h%=xfer2% AND i%=0 THEN
+ save_sprite%=TRUE
+ !xfer3=xfer2% : SYS "Wimp_GetWindowInfo",,xfer3
+ !buffer=xfer2% : buffer!4=0 : SYS "Wimp_GetIconState",,buffer
+ drag!0=0
+ drag!8=xfer3!4+buffer!8
+ drag!12=xfer3!16+buffer!12
+ drag!16=xfer3!4+buffer!16
+ drag!20=xfer3!16+buffer!20
+ SYS "OS_Byte",161,&1C TO ,,byte%
+ IF RO%>299 AND (byte% AND 2)=2 THEN
+  drag!4=7
+  solid%=TRUE
+ ELSE
+  drag!4=5
+  solid%=FALSE
+ ENDIF
+ :
+ drag!24=-100
+ drag!28=-100
+ drag!32=30000
+ drag!36=30000
+ IF solid% THEN SYS "DragASprite_Start",%11000101,1,"file_FF9",drag+8 ELSE SYS "Wimp_DragBox",,drag
+ENDIF
+ENDPROC
+
+
+DEF PROCmenus
+LOCALP%
+:
+PROCmenuheader(framemenu%,"Framerate",LEN"50 fps "*16+12)
+FOR I%=1 TO 8
+ PROCmenuitem(-&80*(I%=8),-1,&7000001,STR$ INT (50/I%)+" fps")
+NEXT
+:
+PROCmenuheader(modemenu%,"(BBC only)",LEN"50 fps    "*16+12)
+FOR I%=1 TO 8
+ PROCmenuitem(-&80*(I%=8),-1,&7000001,STR$(I%-1) )
+NEXT
+:
+PROCmenuheader(iconmenu%,"6502Em",LEN"Single Task "*16+12)
+PROCmenuitem(0,info%,&07000001,"Info")
+PROCmenuitem(0,rommenu%,&07000001,"ROMs")
+PROCmenuitem(0,miscmenu%,&07000001,"Misc")
+REMPROCmenuitem(0,-1,&07000001,"Read CSD")
+REMPROCmenuitem(0,-1,&07000001,"Reset")
+PROCmenuitem(0,xfer%,&07000001,"Save")
+IF sprite=0 THEN
+ PROCmenuitem(0,xfer2%,&07000001 OR (2^22),"Sprite")
+ELSE
+ PROCmenuitem(0,xfer2%,&07000001 OR -(2^22)*(sprite!4=0),"Sprite")
+ENDIF
+PROCmenuitem(0,-1,&07000001,"Config...")
+PROCmenuitem(&80,-1,&07000001,"Quit")
+:
+buffer!0=0:buffer!4=0:buffer!8=0
+SYS "OS_ReadVarVal","6502Em$Keymap",buffer,255 TO ,S$
+keymap%=FNkeymap(S$)
+:
+IF keymaps%<>0 THEN
+ PROCmenuheader(keysmenu%,"Keymap",12*16+12)
+ FORI%=1 TO keymaps%
+  PROCmenuitem(-&80*(I%=keymaps%)-(keymap%=I%),-1,&07000001,keymap$(I%))
+ NEXT
+ENDIF
+:
+PROCmenuheader(speedmenu%,"Speed",6*16+12)
+FORI%=0 TO speeds%
+ PROCmenuitem(-&80*(I%=speeds%),-1,&07000001,speed$(I%))
+NEXT
+:
+PROCmenuheader(rommenu%,"Protected?",12*16+12)
+FORI%=15 TO 0 STEP -1
+ PROCmenuitem(-(?(ROMRAM+I%)<>0)-&80*(I%=0),-1,&07000001,FNROMname(I%))
+NEXT
+:
+PROCmenuheader(miscmenu%,"Misc",LEN"Disable Tape "*16+12)
+PROCmenuitem(0,-1,&07000001,"Read CSD")
+PROCmenuitem(0,-1,&07000001,"Reset")
+:
+IF machine%=0 OR machine%=4 THEN
+ PROCmenuitem(0,-1,&07000001,"Disable Tape")
+ELSE
+ PROCmenuitem(0,-1,&07000001 OR 2^22,"Disable Tape")
+ENDIF
+:
+PROCmenuitem(&80,-1,&07000001,"No Joystick")
+PROCmenuheader(machine_menu%,"Machine",LEN"Master 128 "*16+12)
+PROCmenuitem(0,-1,&07000001 OR -(2^22)*(Machine%(0)=0),Machine$(0))
+PROCmenuitem(0,-1,&07000001 OR -(2^22)*(Machine%(1)=0),Machine$(1))
+PROCmenuitem(0,-1,&07000001 OR -(2^22)*(Machine%(2)=0),Machine$(2))
+PROCmenuitem(0,-1,&07000001 OR -(2^22)*(Machine%(3)=0),Machine$(3))
+PROCmenuitem(&80,-1,&07000001 OR -(2^22)*(Machine%(4)=0),Machine$(4))
+ENDPROC
+
+
+DEF PROCmenuheader(A%,B$,G%)
+P%=A%
+$P%=B$+CHR$13
+P%?12=7 : P%?13=2 : P%?14=7 : P%?15=0
+P%!16=G% : P%!20=44 : P%!24=0
+P%+=28
+ENDPROC
+
+
+DEF PROCmenuitem(A%,B%,C%,D$)
+P%!0=A%
+P%!4=B%
+P%!8=C%
+$(P%+12)=D$+CHR$13
+P%+=24
+ENDPROC
+
+
+DEF PROCindirecteditem(A%,B%,C%,D$,E%)
+P%!0=A%
+P%!4=B%
+P%!8=C%+&07000000
+P%!12=E%
+P%!16=0
+P%!20=LEND$+1
+$E%=D$+CHR$13
+P%+=24
+ENDPROC
+
+
+DEF PROCshowframerate(RETURN S%)
+IF S%<6 THEN S%=6:ELSE IF S%>50 THEN S%=50
+S%=50/INT (50/S%):PROCpokeicontext(14,STR$ S%+" fps")
+ENDPROC
+
+
+DEF PROCdecodemenu
+CASE current_menu% OF
+ WHEN framemenu%     : framerate%=50/(!q%+1):PROCshowframerate(framerate%)
+ WHEN iconmenu%     : PROCiconmenu
+ WHEN machine_menu% : IF !q%<>-1 AND !q%<>machine% THEN machine%=!q%:PROCnewmachine
+ WHEN keysmenu%     : IF !q%<>-1 THEN PROCsetkeymap(keymap$(!q%+1))
+ WHEN speedmenu%    : PROCnewspeed(VAL(LEFT$(speed$(!q%),LENspeed$(!q%)-1)))
+ WHEN modemenu%     : PROCnewBBCmode(!q%)
+ENDCASE
+SYS "Wimp_GetPointerInfo",,q%
+IF (q%!8 AND %1)>0 THEN PROCopenmenu(current_menu%,0,0)
+ENDPROC
+
+
+DEF PROCiconmenu
+CASE !q% OF
+ WHEN 0 : REM Info
+ WHEN 5 : REM Configure
+          PROCopenconfig
+ WHEN 1    : REM ROMs
+  IF q%!4 > -1 THEN
+   S%=15-(q%!4 AND 15)
+   IF FNvalidROM(S%) OR ?(ROMRAM+S%)=2 THEN
+    IF ?(ROMRAM+S%)=2 THEN ?(ROMRAM+S%)=0 ELSE ?(ROMRAM+S%)=1-?(ROMRAM+S%)
+   ELSE
+    ?(ROMRAM+S%)=2
+   ENDIF
+  ENDIF
+ :
+ WHEN 2    : REM Misc
+  IF q%!4 > -1 THEN
+   CASE q%!4 OF
+    WHEN 0 : PROCreadCSD
+    WHEN 1 : PROCreset(2)
+    WHEN 2 : PROCdisableCFS
+    WHEN 3 : joystick%=FALSE
+   ENDCASE
+  ENDIF
+ WHEN 3    : REM Save
+ WHEN 4    : REM Sprite
+ OTHERWISE : PROCquit
+ENDCASE
+ENDPROC
+
+
+DEF PROCmenuitem2(A%,B%,C%,D%,E%,F%)
+P%!0=A%
+P%!4=B%
+P%!8=C%
+P%!12=D%
+P%!16=E%
+P%!20=F%
+P%+=24
+ENDPROC
+
+
+DEFFNcount(A$,B$)
+LOCALI%,C%
+FORI%=1 TO LENA$
+ IF MID$(A$,I%,1)=B$ THEN C%+=1
+NEXT
+=C%
+
+
+DEFFNletter(A$)
+LOCAL I%,J%
+FORI%=1 TO LENA$
+ IF INSTR("ABCDEFabcdef",MID$(A$,I%,1)) THEN J%=TRUE:I%=LENA$
+NEXT
+=J%
+
+
+DEF PROCsave
+IF solid% THEN SYS "DragASprite_Stop"
+K$=""
+IF save_sprite% THEN !drag=xfer2% ELSE !drag=xfer%
+drag!4=1
+SYS "Wimp_GetIconState",,drag
+P%=drag!28-1
+REPEAT P%+=1
+ IF ?P%<>13 THEN K$=K$+CHR$?P%
+ IF ?P%=ASC"." OR ?P%=ASC":" THEN K$=""
+UNTIL?P%=13
+SYS "Wimp_GetPointerInfo",,q%
+IF q%!12<>xfer% AND q%!12<>xfer2% THEN SYS "Wimp_CreateMenu",-1
+q%!20=q%!12
+q%!24=q%!16
+q%!28=q%!0
+q%!32=q%!4
+:
+IF save_sprite%=FALSE THEN
+ q%!36=65667
+ q%!40=filetype%
+ELSE
+ q%!36=80*1024
+ q%!40=&FF9
+ENDIF
+:
+q%!12=0
+q%!16=1
+$(q%+44)=K$+CHR$0
+q%!0=(48+LENK$) AND %111111100
+:
+SYS "XWimp_SendMessage",17,q%,q%!20,q%!24
+myref%=q%!8
+ENDPROC
+
+
+DEFFNleaf(A$)
+LOCAL I%
+I%=LENA$+1
+REPEATI%-=1:UNTIL MID$(A$,I%,1)="." OR MID$(A$,I%,1)=":"
+=LEFT$(A$,I%-1)
+
+
+DEF PROCerr
+ONERROR OFF
+IF FNreport(REPORT$,TRUE) THEN PROCquit ELSE PROCpoll
+ENDPROC
+
+
+DEF PROCerr2(M%)
+LOCAL ERROR
+ONERROR LOCAL PROCerr
+IF hand%<>0 THEN SYS "XOS_Find",0,hand% : REM CLOSE#hand%
+SYS "XWimp_SetMode",M% : SYS "X6502_RemoveExitHandler"
+IF sound%=TRUE THEN PROCsound_restore
+IF FNreport(REPORT$,TRUE) THEN PROCquit ELSE PROCpoll
+ENDPROC
+
+
+DEF FNreport(a$,E%)
+LOCAL A%
+IF E% THEN
+ SYS "XWimp_ReportError","    Internal error "+STR$ ERL+": "+a$,3,"6502Em" TO ,A%
+ELSE SYS "XWimp_ReportError","    "+a$,1,"6502Em" TO ,A%
+ENDIF
+=A%
+
+
+DEFFNcsd
+SYS "XOS_GBPB",6,,buffer TO ;flags
+IF (flags AND 1)=1 THEN OSCLI"DIR <6502Em$Dir>.^":SYS "OS_GBPB",6,,buffer :REM not a great fix, but better than nothing...sh
+buffer?(buffer?1+2)=13
+=$(buffer+2)
+
+
+DEF PROCreadCSD
+LOCAL ERROR
+ON ERROR LOCAL : RESTORE ERROR : fs$="ADFS:":disc$="":path$="$":subpath$="":SYS "XWimp_ReportError","    Error in reading current directory: "+REPORT$,1,"6502Em":ENDPROC
+:
+FOR I%=0 TO 1
+ SYS "OS_Args" TO FS%
+ SYS "OS_FSControl",33,FS%,STRING$(20," "),20 TO ,,fs$
+ IF fs$<>"" THEN fs$=fs$+":":I%=1 ELSE OSCLI"DIR <6502Em$Dir>.^"
+NEXT
+:
+SYS "OS_GBPB",5,,buffer
+buffer?(?buffer+1)=13
+disc$=$(buffer+1)
+IF disc$=CHR$34+"Unset"+CHR$34 THEN disc$="" ELSE disc$=":"+disc$+"."
+:
+path$=FNcsd
+IF path$<>"$" THEN
+ REMSYS "OS_FSControl",11,"@"
+ REPEAT
+  SYS "OS_FSControl",0,"^"
+  CSD$=FNcsd
+  path$=CSD$+"."+path$
+ UNTIL CSD$="$"
+ IF RIGHT$(path$,7)=CHR$34+"Unset"+CHR$34 THEN path$="$"
+ SYS "OS_FSControl",0,path$
+ENDIF
+:
+subpath$=""
+ENDPROC
+
+
+DEF PROCinitBBC
+sound%=FALSE
+:
+!&97000=&A0A0A0A0
+!&97004=&A0A0A0A0
+!&97008=&A0A0A0A0
+!&9700C=&A0A0A0A0
+:
+joystick%=TRUE
+:
+DIM R%(7)
+:
+DIM BBC$(&7C),ARC$(&78),Elec$(3,13)
+RESTORE
+FORI%=0 TO 3
+ FORJ%=13 TO 0 STEP -1
+  READ Elec$(I%,J%)
+ NEXT
+NEXT
+:
+FORI%=0 TO 7
+ FORJ%=0 TO 12
+  READ BBC$(I%*16+J%)
+ NEXT
+NEXT
+:
+FORI%=0 TO &78
+ READ ARC$(I%)
+NEXT
+:
+PROCreadkeymaps
+REMPROCsetkeymap("Default")
+PROCelkkeys("<6502Em$Res>.ElkKeys")
+SYS "6502_Register"
+:
+DIM Machine$(4),Machine%(4),MachineSprite$(4)
+:
+imagefile%=FALSE
+disable_reset=FALSE
+default_machine%=0
+:
+Machine$(0)="BBC B"        : MachineSprite$(0)="OS 1.2"
+Machine$(1)="Master 128"   : MachineSprite$(1)="OS 3.2"
+Machine$(2)="   MOS 3.5"   : MachineSprite$(2)="OS 3.5"
+Machine$(3)="Compact"      : MachineSprite$(3)="OS 5.1"
+Machine$(4)="Electron"     : MachineSprite$(4)="OS 1.0"
+:
+Q=OPENIN"<6502Em$RomPath>Electron"
+IF Q<>0 THEN CLOSE#Q:Machine%(4)=TRUE ELSE Machine%(4)=FALSE
+:
+Q=OPENIN"<6502Em$RomPath>OS1,2"
+IF Q<>0 THEN CLOSE#Q:Machine%(0)=TRUE ELSE Machine%(0)=FALSE
+IF Machine%(0)=FALSE THEN default_machine%=1
+:
+Q=OPENIN"<6502Em$RomPath>M128.OS3,2"
+IF Q<>0 THEN CLOSE#Q : Machine%(1)=TRUE ELSE Machine%(1)=FALSE
+IF Machine%(0)=FALSE AND Machine%(1)=FALSE THEN default_machine%=2
+:
+Q=OPENIN"<6502Em$RomPath>M128.OS3,5"
+IF Q<>0 THEN CLOSE#Q : Machine%(2)=TRUE ELSE Machine%(2)=FALSE
+IF Machine%(0)=FALSE AND Machine%(1)=FALSE AND Machine%(2)=FALSE THEN default_machine%=3
+:
+Q=OPENIN"<6502Em$RomPath>Compact.OS5,1"
+IF Q<>0 THEN CLOSE#Q : Machine%(3)=TRUE ELSE Machine%(3)=FALSE
+IF Machine%(0)=FALSE AND Machine%(1)=FALSE AND Machine%(2)=FALSE AND Machine%(3)=FALSE THEN ERROR 0,"No ROMs found - please install in !6502Em.ROMs"
+:
+REMQ=OPENIN"<6502Em$Dir>.Code"
+REML%=EXT#Q
+REMCLOSE#Q
+REMDIM code L%+3000
+REMDIM roms 17*16*1024
+:
+DIM cmos%(63) : PROCloadCMOS
+DIM eeprom%(255) : PROCloadEEPROM
+REMWHILE (code AND 15)<>0 : code+=1 : ENDWHILE
+:
+indexfile$="":index%=0:newindex%=-1
+:
+REM!buffer=0
+REMSYS "OS_ReadVarVal","6502Em$SaveScreen",buffer,255 TO ,S$
+REMIF LEFT$(S$,3)="Yes" THEN
+REMDIM sprite 80*1024+300
+REMsprite!0=80*1024+256
+REMsprite!8=16
+REMSYS "OS_SpriteOp",256+9,sprite
+REMsave_sprite=FALSE
+REMELSE
+REMsprite=0
+REMsave_sprite=FALSE
+REMENDIF
+:
+PROCreadCSD
+FS$=fs$:DISC$=disc$:PATH$=path$:SUBPATH$=subpath$
+:
+PROCassemble
+PROCload_options
+REMOSCLI"LOAD <6502Em$Dir>.Code "+STR$~code
+REMCALL code+!init_addr
+REMPROCnewmachine
+:
+IF file_xxx THEN OSCLI"IconSprites "+file_xxx$
+:
+REMmemory?&F1B1=3 : REM OSFSC
+REMmemory?&FFCE=3 : REM OSFIND
+REMmemory?&FFD1=3 : REM OSGBPB
+REMmemory?&FFD4=3 : REM OSBPUT
+REMmemory?&FFD7=3 : REM OSBGET
+REMmemory?&FFDA=3 : REM OSARGS
+REMmemory?&FFDD=3 : REM OSFILE
+REMmemory?&FFF1=3 : REM OSWORD
+REMmemory?&FFE0=&23 : REM OSRDCH
+:
+*FX229,1
+:
+REMPROCreset(1)
+:
+REMmemory?&FFF7=3 : REM OSCLI
+REMmemory?&DF89=3 : REM OSCLI
+REMmemory?&EF02=3 :REM KEYV
+REMmemory?&FFF4=&13 : REM OSBYTE
+REMmemory?&FFE0=&23 : REM OSRDCH
+REMmemory?&FFCB=&23
+ENDPROC
+
+
+DEF PROCSRRAM
+?(ROMRAM+socket%)=0
+socket%=(socket%-1) AND 15
+ENDPROC
+
+
+DEF PROCkillROM(S%)
+LOCALI%
+?(ROMRAM+S%)=2 : REM empty
+FOR I%=0 TO 255 STEP 16
+ I%!(roms+romsize%*S%)=0
+NEXT
+ENDPROC
+
+
+DEF PROCloadROM(R$,R%)
+LOCALQ%
+IF machine%=4 AND (socket%=9 OR socket%=8) THEN socket%=7
+S%=socket%
+socket%=(socket%-1) AND 15
+SYS "OS_Find",&4E,R$,"6502Em$ROMPath" TO Q%
+SYS "OS_GBPB",3,Q%,roms+romsize%*S%,&4000
+CLOSE#Q%
+?(ROMRAM+S%)=R%
+ENDPROC
+
+
+DEF PROCinitROMs
+LOCAL S%
+FOR S%=0 TO 15
+ ?(ROMRAM+S%)=2 : REM 0=RAM
+                  REM 1=ROM
+                  REM 2=empty
+NEXT
+ENDPROC
+
+
+DEFFNROMname(S%)
+IF ?(ROMRAM+S%)=2 THEN ="Empty"
+LOCALN$,I%
+I%=roms?(romsize%*S%+7)
+:
+IF FNvalidROM(S%) THEN
+ FORI%=0 TO 11
+  N$=N$+CHR$roms?(romsize%*S%+&9+I%)
+  IF roms?(romsize%*S%+&B)=0 THEN I%=11
+ NEXT
+ELSE
+ N$="RAM "+STR$~S%
+ENDIF
+=N$
+
+
+DEFFNvalidROM(S%)
+LOCALI%
+I%=roms?(romsize%*S%+7)
+IF roms?(romsize%*S%+I%+1)=&28 AND roms?(romsize%*S%+I%+2)=&43 AND roms?(romsize%*S%+I%+3)=&29 THEN =TRUE ELSE =FALSE
+=0
+
+
+DEF PROCreset(A%)
+IF disable_reset THEN ENDPROC
+:
+IF A%>=2 THEN PROCclearmem(memory,memory+&8000)
+:
+IF A%>=1 THEN
+ ?ier=&80   : REM ier
+ ?ier2=&80  : REM ier2
+ ?Eifr=%10
+ ?Eier=%0
+ ?Elatch=0
+ !T1R=&F0<<24
+ !T2R=&F0<<24
+ !T3R=&F0<<24
+ !T4R=&F0<<24
+ OSCLI"LOAD <6502Em$Res>.SHEILA "+STR$~sheila
+ENDIF
+?fe10=&22 : REM motor off etc
+sheila!&C0=&7070B7AB
+:
+PROCsetmemmap
+?ACCCON=0
+PROCsetmemmap2
+:
+?f=%100
+:
+REMmemory?&FE40=0
+REMmemory?&FE60=0
+:
+sheila?&20=2 : REM teletext
+:
+REMmemory?&E0A4=3 : REM where OSWRCH goes to
+REMmemory?&E7EB=3 : REM where OSWORD goes to
+:
+REMmemory?&E98F=10 : REM default repeat delay (OS1.2)
+:
+REMmemory?&FE4E=&0 : REM force power on reset
+REMmemory?&FE6E=&0
+:
+REMmemory?ier=0 : REM force power on reset
+REMmemory?ier2=0
+:
+REMmemory?&28E=&80 : REM 32K
+REMmemory?&DA2F=&EA
+REMmemory?&DA30=&EA
+REMmemory?&355=7
+:
+REM!pc_store=&8000 << 16 : !a=1 << 24
+REM!pc_store=&D9CD << 16
+REM!pc_store=&47B1 << 16
+!pc_store=(memory?&FFFC + (memory?&FFFD << 8)) << 16
+REM!pc_store=(FNpeek(&FFFC) + (FNpeek(&FFFD) << 8)) << 16
+ENDPROC
+
+
+REM ************** THIS ENTERS AND RUNS THE EMULTAOR ***************
+
+
+DEF PROCBBC
+  :
+  IF ABS(MODE)>255 THEN
+  FOR I%=0 TO 255 STEP 4
+  wimp_mode_copy!I%=!(MODE+I%)
+  NEXT
+  wimp_mode=wimp_mode_copy
+ELSE
+  wimp_mode=MODE
+ENDIF
+:
+IF modechecked%=FALSE THEN
+  IF hires% THEN
+    MODE 21
+    IF MODE<>21 THEN SYS "XWimp_SetMode",wimp_mode:ERROR 0,"Cannot change to mode 21 (X640 Y512 C256)"
+  ELSE
+    MODE 12
+    IF MODE<>12 THEN SYS "XWimp_SetMode",wimp_mode:ERROR 0,"Cannot change to mode 12 (X640 Y512 C256)"
+  ENDIF
+  modechecked%=TRUE
+ENDIF
+?lastmode=55
+:
+LOCAL ERROR
+:
+SYS "XOS_SWINumberFromString",,"ImageDFS_Version" TO ; F
+IF (F AND 1)=0 THEN dfssupport=TRUE ELSE dfssupport=FALSE
+IF dfssupport SYS "ImageDFS_EnteringEmulator"
+:
+*FX9
+REMSYS "6502_ReInit"
+REM?lastmode=255
+REM Assign sound channels & start note
+PROCsound_setup
+SYS "6502_InstallExitHandler",wimp_mode
+:
+ONERROR LOCAL PROCerr2(wimp_mode)
+:
+!patch_on=(joystick% AND %10) + (Cursor% AND %100) + (scroll_hack% AND %1000) + (NOTsound_on% AND %10000)
+:
+!speed_loc=speed*2000000/5000
+:
+VDU23,16,1,254| : REM NOSCROLL
+SYS "OS_Byte",202,0,255 TO ,FX202
+SYS "OS_Byte",247,0,255 TO ,FX247
+SYS "OS_Byte",247,255,0
+:
+?cursor_tamper=1
+MOUSE COLOUR 3,255,255,255
+:
+:
+ENDIF    :REM ************ NOT NEEDED! *****************
+SYS "Hourglass_Smash"
+SYS "OS_RemoveCursors"
+:
+SYS "OS_Byte",202,memory?&25A AND %10000,%11101111
+SYS "OS_Byte",118
+MOUSE ON
+SYS "OS_Byte",106,&82 : REM unlink pointer, shape 2
+:
+hand%=OPENINtapefile$
+?tape_handle=hand%
+:
+REPEAT
+  ?vsync_fps_reset=INT(50/framerate%)-1
+  IF newindex%>=0 index%=newindex%
+  IF OSRDCH% THEN PROCpoke(&FFE0,OSRDCH_loc) ELSE PROCpoke(&FFE0,&23)
+  ?ROMSEL=1+ROMSEL%
+  REM?Palette=1+Palette%
+  REM?cursor_on=1+Cursor%
+  PROCsetmemmap
+  PROCsetDIPs
+  A%=roms
+  D%=memory : REM R3
+  SYS "OS_Byte",5,printer% TO ,oldprinter%
+  SYS &600FA,0 : REM Wimp_SetWatchdogState Off
+  REM *** OSCLI"SAVE $.BBCxyz B0900+100"
+  b%=USR(code+!start_offset)                     :REM <- this gives error ARMv7
+  SYS &600FA,1 : REM Wimp_SetWatchdogState On    :REM at &B0990
+  SYS "OS_Byte",5,oldprinter%
+  PROCsetmemmap2
+  *FX15
+  REMVDU4:PRINTTAB(0,0);"XX";b%;"YY";TIME$:QQ=GET
+  CASE b% OF
+    WHEN 11
+      IF INKEY-2 THEN
+        IF hand%<>0 THEN PTR#hand%=FNmax(0,PTR#hand%-350)
+      ELSE
+        IF INKEY-1 THEN volume%+=5 ELSE volume%-=5
+        IF volume%>127 THEN volume%=127
+        IF volume%<0 THEN volume%=0
+        PROCsound_restore:PROCsound_setup
+      ENDIF
+      :
+    WHEN 10 : CLS:?lastmode=255:REMSYS "6502_ReInit":REMmemory?&EC=&E2
+    WHEN 66 : PRINT~!pc_store:Q=GET
+    WHEN 15
+      IF INKEY-3 THEN PROCreset(2) ELSE PROCreset(0)
+      :
+    WHEN 3
+      REMPRINT "*****";~!pc_store >>> 16 : PRINT'a?3,y?3 : REPEATQ=GET:UNTILQ=48
+      REMOSCLI"SAVE RAM:$.Memory "+STR$~memory+" +10000 0 0"
+      IF FNpeek(!pc_store >>> 16)=3 AND (!pc_store >>> 16)<&C000 THEN
+        REMIF memory?((!pc_store >>> 16)+1)<&80 THEN PRINT"LL"memory?((!pc_store >>> 16)+1) : Q=GET
+        REMVDU4:PRINT TAB(0,0);TIME$;~FNpeek((!pc_store >>> 16)+1);"   ";:Q=GET
+        CASE FNpeek((!pc_store >>> 16)+1) OF
+          WHEN 0   : PROCosfsc
+          WHEN 1   : PROCosfind
+          WHEN 2   : PROCosgbpb
+          WHEN 3   : PROCosbput
+          WHEN 4   : PROCosbget
+          WHEN 5   : PROCosargs
+          WHEN 6   : PROCosfile
+          WHEN &40 : PROCosword2
+          WHEN &41 : PROCosbyte2
+          WHEN &80 : PROCreadCMOS
+          WHEN &81 : PROCwriteCMOS
+          WHEN &82 : PROCreadEEPROM
+          WHEN &83 : PROCwriteEEPROM
+          WHEN &D0 : PROCsrload
+          WHEN &D1 : PROCsrwrite
+          WHEN &D2 : PROCdrive
+          WHEN &D3 : PROCboot
+          WHEN &D5 : PROCback : a?3=0 : PROCrts
+          WHEN &D6 : PROCmount
+          WHEN &FF : b%=12 : PROCrts : REM *Quit
+        ENDCASE
+      ELSE
+        CASE (!pc_store >>> 16) OF
+          WHEN &FFF1,&E7EB : PROCosword2
+          WHEN &FFE0 : PROCosrdch
+          WHEN &FFD7 : PROCosbget
+          WHEN &FFD4 : PROCosbput
+          WHEN &FFDD : PROCosfile
+          WHEN &FFDA : PROCosargs
+          WHEN &FFD1 : PROCosgbpb
+          WHEN &FFCE : PROCosfind :REM Open or close a file for byte access
+          WHEN &F1B1,&F0E8 : PROCosfsc
+        ENDCASE
+      ENDIF
+      :
+    WHEN 7
+      cb=(y?3)<<8
+      cb+=x?3
+      cb+=memory
+      FOR I%=0 TO 7
+        R%(I%)=cb!(9+I%*4)
+        IF (cb?4 AND (1<<I%)) <> 0 THEN R%(I%)=FNaddr(R%(I%))
+      NEXT
+      swi%=cb?0
+      swi%+=(cb?1)<<8
+      swi%+=(cb?2)<<16
+      :
+      REMIF swi%=&61140 THEN
+      REMbase=cb!9
+      REMPRINT"GGG";~memory?(base+6);"GGG":Q=GET
+      REMENDIF
+      REMSYS "OS_SWINumberToString",swi%,buffer,255 TO ,swi$
+      REMPRINT"Opcode 7 ";~swi%:Q=GET
+      :
+      IF dfssupport THEN
+        CASE swi% OF
+          WHEN &61140 : REM"XPRESDFS_FDCOperation"
+            base=cb!9
+              CASE memory?base OF
+                WHEN 0,1,2,3
+                WHEN &21 : memory?base=0
+                WHEN &4B : memory?base=1
+                WHEN &E0 : memory?base=2
+                WHEN &EA : memory?base=3
+              OTHERWISE
+                PRINT"Drive ";memory?base;"  "
+              ENDCASE
+            IF memory?(base+6)=&80 THEN memory?(base+6)=&53
+            IF memory?(base+6)=&A0 THEN memory?(base+6)=&4B
+            REMPRINT"FDCOp ";memory?(base+6);"  "
+            IF memory?(base+11)<>0 THEN memory?(base+9)=memory?(base+9)+1
+            memory?(base+9)=(memory?(base+9) AND %11111) OR 32
+            IF memory?(base+6)<>&81 THEN SYS "XImageDFS_OSWORD7F",,base MOD 256,base DIV 256,memory TO R%(0) ; F
+          :
+          WHEN &61141 : REM "XPRESDFS_ReadFDCStatus"
+          WHEN &61142 : REM "XPRESDFS_SetDFSdrives"
+            REMPRINT~R%(0),~R%(1)
+            REMSYS "DFS_RISCOSToBBCDrive",R%(0),R%(1)
+          WHEN &61143 : REM "XPRESDFS_SetDFSStep"
+            REM R%(0)=40 or 80 for *STEP40, *STEP80
+        OTHERWISE
+          SYS (swi% OR 2^17),R%(0),R%(1),R%(2),R%(3),R%(4),R%(5),R%(6),R%(7) TO R%(0),R%(1),R%(2),R%(3),R%(4),R%(5),R%(6),R%(7) ; F
+        ENDCASE
+      ELSE
+        SYS (swi% OR 2^17),R%(0),R%(1),R%(2),R%(3),R%(4),R%(5),R%(6),R%(7) TO R%(0),R%(1),R%(2),R%(3),R%(4),R%(5),R%(6),R%(7) ; F
+      ENDIF
+      :
+      IF cb?3<>0 AND (F AND 1)=0 THEN
+        FOR I%=0 TO cb?3-1
+          IF (cb?5 AND (1<<I%)) <> 0 THEN R%(I%)=R%(I%)-memory
+          cb!(9+I%*4)=R%(I%)
+        NEXT
+      ENDIF
+      :
+      IF (F AND 1)<>0 AND (swi% AND 2^17)=0 THEN
+        A%=R%(0)
+        PROCswi_error
+      ELSE
+        IF (F AND 1)<>0 AND cb?8<>0 THEN
+          err=cb?6
+          err+=(cb?7)<<8
+          err+=memory
+          J%=FALSE
+          err?0=0
+          FOR I%=0 TO cb?8-2
+            err?(I%+1)=R%(0)?I%
+            IF err?I%=0 THEN J%=TRUE
+          NEXT
+          IF J%=FALSE THEN err?(cb?8-1)=0
+        ENDIF
+        :
+        !pc_store=!pc_store+(1 << 16)
+        ?f=?f AND %1100011
+        IF (F AND 1)<>0 THEN ?f=?f OR %01000000
+        IF (F AND 2)<>0 THEN ?f=?f OR %00000001
+        IF (F AND 4)<>0 THEN ?f=?f OR %00000010
+        IF (F AND 8)<>0 THEN ?f=?f OR %10000000
+      ENDIF
+      :
+    WHEN 12:
+    :
+  OTHERWISE
+    REMPRINT"b% = ";b% : Q=GET
+  ENDCASE
+  :
+UNTILb%=12
+:
+IF hand%<>0 THEN SYS "XOS_Find",0,hand% : REM CLOSE#hand%
+:
+SYS "OS_Byte",202,FX202
+SYS "OS_Byte",247,FX247
+SYS "OS_Byte",106,1 : REM relink pointer, shape 1
+:
+*Set Key$11 "<6502Em$Key11>"
+*Set Key$12 "<6502Em$Key12>"
+:
+SYS "6502_RemoveExitHandler"
+:
+REM Restore sound channels
+PROCsound_restore
+:
+IF sprite<>0 THEN
+sprite!0=324*1024
+sprite!8=16
+SYS "XOS_SpriteOp",256+9,sprite
+SYS "XOS_SpriteOp",256+16,sprite,"BBCScreen",1,0,0,1279,1023
+ENDIF
+:
+SYS "Wimp_SetMode",wimp_mode
+:
+*FX15,0
+:
+IF dfssupport SYS "ImageDFS_LeavingEmulator"
+ENDPROC
+
+
+DEFFNmax(A%,B%)
+IF A%>B% THEN =A% ELSE =B%
+=0
+
+
+DEF PROCpullpc
+sp?3=sp?3+1
+pc_store?2=?(memory+&100+sp?3)
+sp?3=sp?3+1
+pc_store?3=?(memory+&100+sp?3)
+ENDPROC
+
+
+DEF PROCassemble
+a=memory-&100+0
+x=memory-&100+4
+y=memory-&100+8
+f=memory-&100+12
+sp=memory-&100+16
+pc_store=memory-&100+20
+T1R=memory-&100+32
+T2R=memory-&100+40
+T3R=memory-&100+48
+T4R=memory-&100+56
+T1=memory-&100+28
+T2=memory-&100+36
+T3=memory-&100+44
+T4=memory-&100+52
+screenR=memory-&100+64
+ifr=memory-&100+76
+ier=memory-&100+77
+ifr2=memory-&100+78
+ier2=memory-&100+79
+cursor_tamper=memory-&100+88
+rom=memory-&100+96
+:
+ROMSEL=memory-&100+92
+romsel=memory-&100+96
+pal_regs=memory-&100+148
+screen_line=memory-&100+164 : !screen_line=0
+screen_timingcount=memory-&100+168:!screen_timingcount=40000
+ROMRAM=memory-&100+100
+patch_on=memory-&100+176:!patch_on=0
+lastmode=memory-&100+178:?lastmode=8
+fe10=memory-&100+179
+tape_handle=memory-&100+117
+tape_count=memory-&100+180
+ACCCON=memory-&100+172
+Elatch=memory-&100+188
+Eifr=memory-&100+189
+Eier=memory-&100+190
+REMROMint=memory-&100+191
+speed_loc=memory-&100+196
+vsync_fps=memory-&100+189:?vsync_fps=0
+vsync_fps_reset=memory-&100+191:?vsync_fps_reset=10
+vsync_timer=memory-&100+192:!vsync_timer=0
+:
+P%=code
+[OPT2
+.Oa
+EQUD 0
+.Ox
+EQUD 0
+.Oy
+EQUD 0
+.Of
+EQUD 0
+.Osp
+EQUD 0
+.Opc_store
+EQUD 0
+.start_offset
+EQUD 0
+.trace
+EQUD 0
+.trace2
+EQUD 0
+.init_addr
+EQUD 0
+.crt_addr
+EQUD 0
+.T1_addr
+EQUD 0
+.ifr_addr
+EQUD 0
+.column_counter_addr
+EQUD 0
+.ROMSEL_addr
+EQUD 0
+.Palette_addr
+EQUD 0
+.speed_addr
+EQUD 0
+.elite_addr
+EQUD 0
+.opco_addr                    EQUD 0
+.bcd_addr                     EQUD 0
+.sheila_writetab_addr         EQUD 0
+.sheila_readtab_addr          EQUD 0
+.sound_vectors_addr           EQUD 0
+.patch_addr                   EQUD 0
+]
+ENDPROC
+
+
+DEF PROCrts
+sp?3=sp?3+1
+pc_store?2=memory?(&100+sp?3)
+sp?3=sp?3+1
+pc_store?3=memory?(&100+sp?3)
+!pc_store=!pc_store+(1 << 16)
+REMPRINT~!pc_store:Q=GET
+ENDPROC
+:
+!pc_store=&8004 << 16 : REM RTS
+REMpc_store?2=?(sp?3+&101+memory)
+REMpc_store?3=?(sp?3+&102+memory)
+REMsp?3=sp?3 + 2
+ENDPROC
+
+
+DEFFNstring(A%)
+LOCAL A$
+A$=""
+A%-=1
+REPEATA%+=1
+ IF ?A%>32 A$=A$+CHR$?A%
+UNTIL?A%<32 OR LENA$>254
+=A$
+
+
+DEF PROCosfile
+REMPRINT"OSFILE "a?3:Q=GET
+addr=memory+x?3+(y?3)*256
+CASE a?3 OF
+ WHEN 0,1,2,3,4
+  a%=a?3
+  b$=FNaddpath($(FNaddr(addr!0 AND &FFFF)))
+  c%=addr!2
+  d%=addr!6
+  e%=FNaddr((addr!10 AND &FFFF))
+  f%=FNaddr((addr!14 AND &FFFF))
+  REMPRINT~a%,b$,~c%,~d%,e%,~f%
+  SYS "XOS_File",a%,b$,c%,d%,e%,f% TO A% ; F
+  IF (F AND 1)=0 THEN PROCrts ELSE PROCswi_error
+  :
+ WHEN 5
+  b$=$(FNaddr(addr!0 AND &FFFF))
+  REMVDU4:PRINT"x";b$;LENb$;"x",~addr-memory,~addr!0,GET:VDU5
+  SYS "XOS_File",13,FNadd_(b$),,,FN_path(b$) TO A%,,c%,d%,e%,f% ; F
+  IF (F AND 1)=1 THEN
+   PROCswi_error
+  ELSE
+   a?3=A%
+   addr!2=c%
+   addr!6=d%
+   addr!10=e%
+   addr!14=f%
+   PROCrts
+  ENDIF
+  :
+ WHEN 6
+  b$=$(FNaddr(addr!0 AND &FFFF))
+  SYS "XOS_File",6,FNaddpath(b$) TO A%,,c%,d%,e%,f% ; F
+  IF (F AND 1)=1 THEN
+   PROCswi_error
+  ELSE
+   a?3=A%
+   addr!2=c%
+   addr!6=d%
+   addr!10=e%
+   addr!14=f%
+   PROCrts
+  ENDIF
+  :
+ WHEN 255
+  a%=a?3
+  b$=$(FNaddr(addr!0 AND &FFFF))
+  REMB%=(addr!0 AND &FFFF)+memory
+  c%=FNaddr(addr!2 AND &FFFF)
+  IF (addr!2 AND &FFFF0000)=&FFFE0000 THEN c%-=&13000
+  d%=addr?6
+  IF d%<>0 THEN SYS "XOS_File",13,FNadd_(b$),,,FN_path(b$) TO ,,c%: d%=0 : c%=FNaddr(c% AND &FFFF)
+  SYS "XOS_File",13,FNadd_(b$),,,FN_path(b$) TO ,,,,length%
+  :
+  IF c%+length%>memory+&8000 AND c%<memory+&8000 THEN
+   length%=memory+&7FFF-c%
+   SYS "XOS_Find",&4D,FNadd_(b$),FN_path(b$) TO A% ; F
+   IF (F AND 1)=0 THEN SYS "XOS_GBPB",4,A%,c%,length%:SYS "XOS_Find",0,A%:PROCrts ELSE PROCswi_error
+  ELSE
+   SYS "XOS_File",12,FNadd_(b$),c%,0,FN_path(b$) TO A%,,c%,d%,e%,f% ; F
+   a?3=A%
+   addr!2=c%
+   addr!6=d%
+   addr!10=e%
+   addr!14=f%
+   IF (F AND 1)=0 THEN PROCrts ELSE PROCswi_error
+  ENDIF
+  REMPRINT~a%,b$,~c%,~d%,~memory : Q=GET
+  REMSYS "XOS_File",12,FNadd_(b$),c%,0,FN_path(b$) TO A%,,c%,d%,e%,f% ; F
+  a?3=1
+  REMa?3=A%
+  REMaddr!2=c%
+  REMaddr!6=d%
+  REMaddr!10=e%
+  REMaddr!14=f%
+  REMIF (F AND 1)=0 THEN PROCrts ELSE PROCswi_error
+  REMPRINT~!pc_store : Q=GET
+ OTHERWISE
+  PRINT"OSFILE ";a?3 : Q=GET
+ENDCASE
+ENDPROC
+
+
+DEF PROCswi_error
+LOCALA$
+A$=""
+FOR I%=0 TO 253
+ REMIF A%?I%=0 THEN I%=260 ELSE A$=A$+CHR$(A%?I%):PRINTA$
+ memory?(&102+I%)=A%?(I%+4)
+ IF A%?(I%+4)=0 THEN I%=253
+NEXT
+REMA$=A$+CHR$13
+memory?&100=0
+memory?&101=?A%
+REM$(memory+&102)=A$
+!pc_store=&100 << 16
+ENDPROC
+
+
+DEF PROCbrk(A%,A$)
+A$=A$+CHR$0
+FOR I%=0 TO LENA$-1
+ memory?(&102+I%)=ASCMID$(A$,I%+1,1)
+NEXT
+memory?&100=0
+memory?&101=A%
+!pc_store=&100 << 16
+ENDPROC
+
+
+DEFFNmin(A%,B%) IF A%<B% THEN =A% ELSE =B%
+=0
+
+
+DEF PROCosgbpb
+REMVDU4:PRINTTAB(0,0);TIME$;"OSGBPB";a?3;"   ",GET
+addr%=memory+x?3+(y?3 << 8)
+b%=?addr%
+c%=addr%!1
+d%=addr%!5
+e%=addr%!9
+:
+IF a?3=9 THEN
+ SYS "XOS_GBPB",a?3,fs$+disc$+path$+subpath$,FNaddr(c% AND &FFFF),b%,e%,d%,0 TO A%,,,d%,e% ; F
+ IF (F AND 1)=0 THEN
+  ?addr%=d%
+  addr%!9=e%
+  IF (F AND %10)=0 THEN ?f=(?f AND %11111110) ELSE ?f=?f OR 1
+  PROCrts
+ ELSE
+  PROCswi_error
+ ENDIF
+ELSE
+ SYS "OS_FSControl",11,fs$ : REM set temporary filing system
+ SYS "OS_FSControl",0,disc$+path$+subpath$ : REM change dir
+ :
+ IF (a?3=3 OR a?3=4) AND c%<&8000 AND c%+e%>&8000 THEN e%=&8000-c% : REM stop overflow at &8000
+ :
+ SYS "XOS_GBPB",a?3,b%,FNaddr(c% AND &FFFF),d%,e% TO A%,,c%,d%,e% ; F
+ :
+ SYS "OS_FSControl",19
+ :
+ IF (F AND 1)=0 THEN
+  addr%!1=c%-memory
+  addr%!5=d%
+  addr%!9=e%
+  IF (F AND %10)=0 THEN ?f=(?f AND %11111110) ELSE ?f=?f OR 1
+  PROCrts
+ ELSE
+  PROCswi_error
+ ENDIF
+ENDIF
+ENDPROC
+
+
+DEF PROCosargs
+CASE a?3 OF
+ WHEN 0 :
+  IF y?3<>0 THEN
+   SYS "XOS_Args",a?3,y?3 TO A%,,L% ; F
+   IF (F AND 1)=0 THEN memory!(x?3)=L%:PROCrts ELSE PROCswi_error
+  ELSE
+   a?3=4 : PROCrts
+  ENDIF
+  :
+ WHEN 1 :
+  SYS "XOS_Args",a?3,y?3,memory!(x?3) TO A% ; F
+  IF (F AND 1)=0 THEN PROCrts ELSE PROCswi_error
+ WHEN 2 :
+  SYS "XOS_Args",a?3,y?3 TO A%,,L% ; F
+  IF (F AND 1)=0 THEN memory!(x?3)=L%:PROCrts ELSE PROCswi_error
+ WHEN 255 :
+  SYS "XOS_Args",a?3,y?3 TO A% ; F
+  IF (F AND 1)=0 THEN PROCrts ELSE PROCswi_error
+OTHERWISE : PROCrts
+ENDCASE
+ENDPROC
+
+
+DEFFNupper(A$)
+LOCALI%,B$
+FORI%=1 TO LENA$
+ IF MID$(A$,I%,1)>="a" AND MID$(A$,I%,1)<="z" THEN B$=B$+CHR$(ASCMID$(A$,I%,1)-32) ELSE B$=B$+MID$(A$,I%,1)
+NEXT
+=B$
+
+
+DEF PROCquit
+ONERROR OFF
+SYS &20066,1,dynamicarea% :REM OS_DynamicArea
+SYS "X6502_DeRegister" TO A%
+IF A%=0 THEN
+ SYS "XOS_Module",4,"6502Support"
+ SYS "XOS_CLI","Wipe <6502Em$TempDir> ~CFR~V"
+ENDIF
+SYS "Wimp_CloseDown"
+END
+ENDPROC
+
+
+DEF PROCsnap_save(F$)
+IF INSTR(F$,".")=0 AND INSTR(F$,":")=0 AND LEFT$(F$,6)<>"<Wimp$" THEN SYS "Wimp_ReportError","    To save, drag the file icon to a directory viewer":ENDPROC
+LOCALQ,I%
+:
+length%=&10200-&8000
+!buffer=xfer%:buffer!4=4
+SYS "Wimp_GetIconState",,buffer
+IF (buffer!24 AND 2^21)<>0 THEN length%=&10200-&4000
+!buffer=xfer%:buffer!4=5
+SYS "Wimp_GetIconState",,buffer
+IF (buffer!24 AND 2^21)<>0 THEN length%=&10200
+:
+!T1=(!T1) << 8
+!T2=(!T2) << 8
+!T3=(!T3) << 8
+!T4=(!T4) << 8
+:
+Q=OPENOUTF$
+BPUT#Q,"BBC Snapshot101"
+SYS "OS_GBPB",2,Q,memory-&200,length%
+CLOSE#Q
+OSCLI"SetType "+F$+" "+STR$~filetype%
+:
+!T1=!T1 >>> 8
+!T2=!T2 >>> 8
+!T3=!T3 >>> 8
+!T4=!T4 >>> 8
+ENDPROC
+
+
+DEF PROCsnap_load(file$)
+LOCAL file%,I%,J%,ok%,machine$,M%,byte1%,byte2%
+file%=OPENIN(file$)
+byte1%=BGET#file%:byte2%=BGET#file%:PTR#file%=0
+type$=GET$#file%
+IF EXT#file%=0 THEN type$="BBC Script"
+IF LEFT$(type$,64)=STRING$(48,CHR$0)+"!BBC tape file!"+CHR$0 THEN type$="BBC Tapefile"
+IF LEFT$(type$,9)="UEF File!" OR (byte1%=&1F AND byte2%=&8B) THEN type$="UEF File!"
+:
+CASE type$ OF
+ WHEN "UEF File!"
+  CLOSE#file%
+  OSCLI"WimpTask <6502Em$Dir>.DecodeUEF "+file$
+  :
+ WHEN "BBC Tapefile"
+  CLOSE#file%
+  tapefile$=file$
+  :
+ WHEN "BBC Script"
+  LOCAL ERROR
+  :
+  ON ERROR LOCAL : RESTORE ERROR : SYS "XWimp_ReportError","    Error in script: "+REPORT$,3,"6502Em" TO ,A%:IF A%=2 THEN PROCquit ELSE PROCpoll
+  :
+  scroll_hack%=FALSE
+  :
+  IF EOF#file% THEN
+   A$=""
+  ELSE
+   A$=FNupper(GET$#file%)
+  ENDIF
+  :
+  REPEAT
+   B$=LEFT$(A$,INSTR(A$," ")-1)
+   ok%=TRUE
+   CASE B$ OF
+    WHEN "PALETTE"
+ REM IF INSTR(A$,"ON") THEN Palette%=TRUE ELSE Palette%=FALSE
+    WHEN "CURSOR"
+     IF INSTR(A$,"ON") THEN Cursor%=TRUE ELSE Cursor%=FALSE
+    WHEN "EXACTSPEED"
+     IF INSTR(A$,"ON") THEN PROCnewspeed(100) ELSE PROCnewspeed(10000)
+    WHEN "SOUND"
+     IF INSTR(A$,"ON") THEN sound_on%=TRUE ELSE sound_on%=FALSE
+    WHEN "DISABLETAPE"
+     PROCdisableCFS
+    WHEN "SCROLLHACK"
+     scroll_hack%=TRUE
+    WHEN "KEYMAP"
+     K$=RIGHT$(A$,LENA$-INSTR(A$," "))
+     PROCsetkeymap(K$)
+    WHEN "PATCH"
+     :
+    WHEN "SPEED"
+     PROCnewspeed(VALRIGHT$(A$,LENA$-6))
+    WHEN "INDEXFILE"
+     T$=RIGHT$(A$,LENA$-10)
+     T%=OPENIN(FNleaf(file$)+"."+T$)
+     IF T%<>0 THEN CLOSE#T%:indexfile$=FNleaf(file$)+"."+T$:index%=0 ELSE ERROR 1,"Index File "+T$+" not found"
+    WHEN "TAPEFILE"
+     T$=RIGHT$(A$,LENA$-9)
+     T%=OPENIN(FNleaf(file$)+"."+T$)
+     IF T%<>0 THEN CLOSE#T%:tapefile$=FNleaf(file$)+"."+T$ ELSE ERROR 1,"Tape File "+T$+" not found"
+    WHEN "LOADROM"
+     L$=RIGHT$(A$,LENA$-8)
+     IF INSTR(L$,":")=0 THEN
+      PROCloadROM(FNleaf(file$)+"."+L$,1)
+     ELSE
+      PROCloadROM(L$,1)
+     ENDIF
+    WHEN "LOADRAM"
+     L$=RIGHT$(A$,LENA$-8)
+     IF INSTR(L$,":")=0 THEN
+      PROCloadROM(FNleaf(file$)+"."+L$,0)
+     ELSE
+      PROCloadROM(L$,0)
+     ENDIF
+    WHEN "KILLROM"
+     L$=RIGHT$(A$,LENA$-8)
+     FOR I%=0 TO 15
+      IF LEFT$(FNupper(FNROMname(I%)),LENL$)=L$ THEN PROCkillROM(I%)
+     NEXT
+    WHEN "MACHINE"
+     machine$=RIGHT$(A$,LENA$-8)
+     PROCstrip(machine$)
+     CASE machine$ OF
+      WHEN "BBC","BBCB","BBC B"
+       M%=0
+      WHEN "MASTER","MASTER128","MASTER 128"
+       M%=1
+      WHEN "OS3.5","OS 3.5","OS3,5","OS 3.5"
+       M%=2
+      WHEN "COMPACT","MASTER COMPACT"
+       M%=3
+      WHEN "ELECTRON","ELK"
+       M%=4
+      OTHERWISE
+       CLOSE#file%:ERROR 1,"Unknown machine '"+machine$+"'"
+     ENDCASE
+     IF M%<>machine% THEN machine%=M%:PROCnewmachine
+    OTHERWISE
+     ok%=FALSE
+   ENDCASE
+   :
+   IF ok% THEN
+    IF EOF#file% THEN
+     A$=""
+    ELSE
+     A$=FNupper(GET$#file%)
+    ENDIF
+   ENDIF
+  UNTIL FNi("PATCH") AND FNi("PALETTE") AND FNi("MACHINE") AND FNi("INDEXFILE") AND FNi("TAPEFILE") AND FNi("KEYMAP") AND FNi("CURSOR") AND FNi("EXACTSPEED") AND FNi("DISABLETAPE") AND FNi("LOADROM") AND FNi("LOADRAM") AND FNi("KILLROM") AND FNi("SOUND") AND FNi("SCROLLHACK") AND FNi("SPEED")
+  :
+  CLOSE#file%
+  :
+  IF A$="" THEN
+   A$=FNleaf(file$)
+   PROCfile_load(A$+"."+RIGHT$(A$,LENA$-LENFNleaf(A$)-2))
+  ELSE
+   IF LEFT$(A$,5)="CHAIN" OR LEFT$(A$,1)="*" OR INSTR(A$," ")>0 THEN
+    osrdch$=A$+CHR$13
+    PROCreset(2)
+    osrdch_count%=0
+    OSRDCH_loc_tmp=OSRDCH_loc
+    OSRDCH_loc=3
+    PROCnewpath(FNleaf(file$)+".JUNK")
+   ELSE
+    PROCfile_load(FNleaf(file$)+"."+A$)
+   ENDIF
+  ENDIF
+  :
+ WHEN "BBC Snapshot   " :
+  IF EXT#file%=&10110 THEN
+   SYS "OS_GBPB",4,file%,memory-&100,&10100
+   PTR#file%=&10110-&200
+   SYS "OS_GBPB",4,file%,sheila,&100
+  ELSE
+   SYS "OS_GBPB",4,file%,memory-&100,EXT#file%-&110
+   SYS "OS_GBPB",4,file%,sheila,&100
+  ENDIF
+  CLOSE#file%
+  :
+ WHEN "BBC Snapshot101" :
+  SYS "OS_GBPB",4,file%,memory-&200,EXT#file%-&10
+  CLOSE#file%
+  !T1=!T1 >> 8
+  !T2=!T2 >> 8
+  !T3=!T3 >> 8
+  !T4=!T4 >> 8
+  FOR I%=0 TO 15
+   J%=pal_regs?I% AND 15
+   pal_regs?I%=J% + (J%<<4)
+  NEXT
+ :
+OTHERWISE : REM BBC ROM
+ CLOSE#file%
+ PROCloadROM(A$,1)
+ENDCASE
+ENDPROC
+
+
+DEFFNi(B$)
+IF INSTR(A$,B$)=0 THEN =TRUE ELSE =FALSE
+=0
+
+
+DEF PROCfile_load(F$)
+imagefile%=FALSE
+PROCnewpath(F$)
+REMOSCLI"DIR "+FNleaf(F$)
+FORI%=1 TO LENF$
+ IF MID$(F$,LENF$-I%,1)="." OR MID$(F$,LENF$-I%,1)=":" THEN L%=I%:I%=LENF$
+NEXT
+A$=RIGHT$(F$,L%)
+SYS "OS_File",5,F$ TO object%,,load2%,exec2%,length%
+load%=load2% AND &FFFF
+exec%=exec2% AND &FFFF
+IF object%=0 THEN exec%=&FFFF : REM DFSImage but no !Boot
+osrdch$="*/"+A$+CHR$13 : REM default
+IF exec%=&801F OR exec%=&8023 OR exec%=&802B OR exec%=&80E7 THEN osrdch$="PAGE=&"+STR$~load%+CHR$13+"CHAIN"+CHR$34+A$+CHR$34+CHR$13
+IF (load2% AND &FFF00)=&FFB00 THEN osrdch$="CHAIN"+CHR$34+A$+CHR$34+CHR$13
+IF exec%=&FFFF OR (load2% AND &FFF00)=&FFE00 OR (load2%=0 AND exec2%=0) THEN osrdch$="*EXEC "+A$+CHR$13:IF machine%=0 THEN osrdch$="PAGE=&1900"+CHR$13+"NEW"+CHR$13+osrdch$
+PROCreset(2)
+osrdch_count%=0
+OSRDCH_loc_tmp=OSRDCH_loc
+OSRDCH_loc=3
+ENDPROC
+
+
+DEF PROCosrdch
+osrdch_count%+=1
+a?3=ASCMID$(osrdch$,osrdch_count%,1)
+PROCrts
+IF osrdch_count%=LENosrdch$ THEN OSRDCH_loc=OSRDCH_loc_tmp : PROCpoke(&FFE0,OSRDCH_loc)
+ENDPROC
+
+
+DEFFNbinary(B%)
+LOCALA$,I%
+FORI%=0 TO 7
+ IF (B% AND 2^I%)=0 THEN A$="0"+A$ ELSE A$="1"+A$
+NEXT
+=A$
+
+
+DEF PROCnewpath(F$)
+SYS "OS_GSTrans",F$,buffer,255 TO ,F$
+fs$=LEFT$(F$,INSTR(F$,":"))
+F$=RIGHT$(F$,LENF$-LENfs$)
+:
+IF LEFT$(F$,1)=":" THEN
+ disc$=LEFT$(F$,INSTR(F$,"."))
+ F$=RIGHT$(F$,LENF$-LENdisc$)
+ELSE
+ disc$=""
+ENDIF
+:
+path$=FNleaf(F$)
+subpath$=""
+IF MID$(path$,LENpath$-1,1)="." THEN subpath$=RIGHT$(path$,2):path$=LEFT$(path$,LENpath$-2)
+ENDPROC
+
+
+DEFFNnumeric(A$)
+IF A$>="0" AND A$<="9" THEN =TRUE ELSE =FALSE
+=0
+
+
+DEFFNadd_(F$)
+IF LEFT$(F$,1)=":" AND FNnumeric(MID$(F$,2,1)) AND MID$(F$,3,1)="." THEN F$=RIGHT$(F$,LENF$-3)
+IF INSTR(F$,":") THEN =F$
+IF LEFT$(F$,1)=CHR$34 AND RIGHT$(F$,1)=CHR$34 THEN F$=MID$(F$,2,LENF$-2) : REM Remove quotes
+:
+IF (F$="" OR INSTR(F$,"|")) AND indexfile$<>"" THEN
+ Q=OPENINindexfile$
+ PTR#Q=index%
+ F$=GET$#Q
+ newindex%=PTR#Q
+ IF newindex%=EXT#Q THEN newindex%=0
+ CLOSE#Q
+ENDIF
+:
+IF MID$(F$,2,1)="." THEN
+ IF LEFT$(F$,1)="$" THEN =RIGHT$(F$,LENF$-2)
+ =F$
+ELSE
+ =F$
+ENDIF
+=""
+
+
+DEFFN_path(F$)
+IF LEFT$(F$,1)=":" AND FNnumeric(MID$(F$,2,1)) AND MID$(F$,3,1)="." THEN F$=RIGHT$(F$,LENF$-3)
+IF INSTR(F$,":") THEN =""
+IF MID$(F$,2,1)="." THEN
+ =fs$+disc$+path$+"."
+ELSE
+ =fs$+disc$+path$+subpath$+"."
+ENDIF
+=""
+
+
+DEFFNaddpath(F$)
+IF LEFT$(F$,1)=":" AND FNnumeric(MID$(F$,2,1)) AND MID$(F$,3,1)="." THEN F$=RIGHT$(F$,LENF$-3)
+IF INSTR(F$,":") THEN =F$
+IF LEFT$(F$,1)=CHR$34 AND RIGHT$(F$,1)=CHR$34 THEN F$=MID$(F$,2,LENF$-2) : REM Remove quotes
+IF MID$(F$,2,1)="." THEN
+ IF LEFT$(F$,1)="$" THEN =path$+"."+RIGHT$(F$,LENF$-2)
+ =fs$+disc$+path$+"."+F$
+ELSE
+ =fs$+disc$+path$+subpath$+"."+F$
+ENDIF
+=""
+
+
+DEFFNstrip(F$)
+LOCALI%
+REPEATI%+=1:UNTILMID$(F$,I%,1)<>"*" AND MID$(F$,I%,1)<>" "
+=RIGHT$(F$,LENF$-I%+1)
+
+
+DEF PROCstrip(RETURN s$)
+WHILE LEFT$(s$,1)=" "
+ s$=MID$(s$,2)
+ENDWHILE
+WHILE RIGHT$(s$,1)=" "
+ s$=LEFT$(s$,LEN s$-1)
+ENDWHILE
+ENDPROC
+
+
+DEF PROCstrip2(RETURN s$)
+WHILE LEFT$(s$,1)=" " OR LEFT$(s$,1)="*"
+ s$=MID$(s$,2)
+ENDWHILE
+WHILE RIGHT$(s$,1)=" " OR RIGHT$(s$,1)="*"
+ s$=LEFT$(s$,LEN s$-1)
+ENDWHILE
+ENDPROC
+
+
+DEF PROCdir(D$)
+FS$=fs$:DISC$=disc$:PATH$=path$:SUBPATH$=subpath$
+REMPRINTD$:Q=GET
+LOCALI%
+REPEATI%+=1:UNTILMID$(D$,I%,1)<>" "
+D$=RIGHT$(D$,LEND$-I%+1)
+IF INSTR(D$," ") THEN
+ D$=LEFT$(D$,INSTR(D$," ")-1)
+ELSE
+ IF LEND$=4 AND LEFT$(FNupper(D$),3)="DIR" THEN D$=RIGHT$(D$,1)
+ENDIF
+:
+IF D$="^" THEN
+ IF subpath$<>"" THEN subpath$="":PROCrts:ENDPROC
+ IF INSTR(path$,".")=0 THEN path$="$":PROCrts:ENDPROC
+ I%=LENpath$
+ REPEATI%-=1:UNTILMID$(path$,I%,1)="."
+ path$=LEFT$(path$,I%-1)
+ PROCrts:ENDPROC
+ENDIF
+:
+IF D$="$" OR LEND$=0 THEN subpath$="":PROCrts:ENDPROC
+IF LEND$=1 THEN
+ SYS "XOS_File",13,D$,,,fs$+disc$+path$+"." TO A% ; F
+ IF (F AND 1)<>0 THEN PROCswi_error:ENDPROC
+ IF (A% AND 2)=0 AND LEND$=1 THEN subpath$="":PROCrts:ENDPROC : REM no error returned if you try to change to a non-existing single letter directory
+ IF (A% AND 2)=0 THEN PROCbrk(214,"Directory '"+D$+"' not found") ELSE subpath$="."+D$:PROCrts
+ ENDPROC
+ENDIF
+:
+IF INSTR(D$,":")>1 THEN
+ IF RIGHT$(D$,1)<>":" THEN SYS "XOS_File",17,D$ TO A% ; F:IF (F AND 1)<>0 THEN PROCswi_error:ENDPROC
+ SYS "OS_FSControl",11,D$ TO ,E$,E%
+ IF E%<>-1 THEN SYS "OS_FSControl",19:fs$=LEFT$(D$,LEND$-LENE$):D$=E$ ELSE PROCbrk(248,"No such filing system"):ENDPROC
+ path$=""
+ subpath$=""
+ disc$=""
+ IF LEFT$(D$,1)<>":" THEN path$="$"
+ENDIF
+:
+IF LEFT$(D$,1)=":" THEN
+ I%=0:disc$=""
+ REPEAT I%+=1
+  disc$=disc$+MID$(D$,I%,1)
+ UNTIL MID$(D$,I%+1,1)="." OR I%=LEND$
+ IF I%=LEND$ THEN D$="" ELSE D$=RIGHT$(D$,LEND$-LENdisc$-1)
+ path$="":subpath$=""
+ENDIF
+:
+IF LEFT$(D$,1)="$" AND LEND$>2 THEN path$="$":subpath$="":D$=RIGHT$(D$,LEND$-2)
+:
+IF disc$<>"" AND RIGHT$(disc$,1)<>"." AND path$<>"" THEN disc$=disc$+"."
+SYS "XOS_File",13,D$,,,fs$+disc$+path$+subpath$+"." TO A% ; F
+IF disc$<>"" AND RIGHT$(disc$,1)<>"." THEN disc$=disc$+"."
+IF (F AND 1)<>0 THEN PROCrestoreCSD:PROCswi_error:ENDPROC
+IF (A% AND 2)=0 THEN
+ PROCrestoreCSD
+ PROCbrk(214,"Directory '"+D$+"' not found")
+ELSE
+ IF D$<>"" THEN
+ IF path$<>"" THEN path$=path$+subpath$+"."+D$:subpath$="" ELSE path$=D$
+ENDIF
+:
+PROCrts
+ENDIF                :REM n/r?
+IF path$="" THEN path$="$"
+ENDPROC
+
+
+DEF PROCback
+SWAP fs$,FS$
+SWAP disc$,DISC$
+SWAP path$,PATH$
+SWAP subpath$,SUBPATH$
+ENDPROC
+
+
+DEF PROCrestoreCSD
+fs$=FS$:disc$=DISC$:path$=PATH$:subpath$=SUBPATH$
+ENDPROC
+
+
+DEF PROCosfsc
+REMPRINT"OSFSC ";a?3:Q=GET
+CASE a?3 OF
+ WHEN 1   : REMx?3=(EOF#x?3) AND &FF
+            SYS "XOS_Args",5,x?3 TO A%,,x?3 ; F
+            IF (F AND 1)=0 THEN PROCrts ELSE PROCswi_error
+            IF x?3<>0 THEN x?3=&FF
+ WHEN 3   : addr=FNaddr(x?3+((y?3) << 8))
+            b$=FNstrip($addr)
+            SYS "XOS_Find",&4D,FNadd_(b$),FN_path(b$) TO Q ; F
+            A%=Q
+
+            IF Q=0 OR (F AND 1)<>0 THEN
+            IF LEFT$(FNupper(b$),4)="DIR " OR (LEFT$(FNupper(b$),3)="DIR" AND LENb$=4) THEN
+            PROCdir(RIGHT$(b$,LENb$-4))
+            ELSE
+            IF Oscli% THEN
+            SYS "XOS_CLI",b$ TO A% ; F
+            IF (F AND 1)=0 THEN PROCrts ELSE PROCswi_error
+            ELSE
+            PROCbrk(254,"Bad Command")
+            ENDIF
+            ENDIF
+            ELSE
+            CLOSE#Q
+            b$=FNaddpath(b$)
+            SYS "OS_File",5,b$ TO ,,c%,d% : c%=FNaddr(c% AND &FFFF)
+            SYS "OS_File",255,b$,c%,0
+            !pc_store=d% << 16
+            ENDIF
+ WHEN 2,4 : addr=FNaddr(x?3+((y?3) << 8))
+            b$=$addr
+            b$=FNstripquotes(b$)
+            SYS "XOS_File",13,FNadd_(b$),,,FN_path(b$) TO A%,,c%,d%,length% ; f% : c%=FNaddr(c% AND &FFFF)
+            IF c%+length%>memory+&8000 AND c%<memory+&8000 THEN length%=memory+&8000-c%
+            SYS "XOS_Find",&4D,FNadd_(b$),FN_path(b$) TO A% ; f%
+            IF (f% AND 1)=0 THEN SYS "XOS_GBPB",4,A%,c%,length%:SYS "XOS_Find",0,A%
+            REMIF (f% AND 1)=0 THEN SYS "XOS_File",12,FNadd_(b$),c%,0,FN_path(b$) TO A% ; f%
+            IF (f% AND 1)=0 THEN !pc_store=d% << 16 ELSE PROCswi_error
+ WHEN 5   : PROCrts:REMOSCLI"CAT":Q=GET:PROCrts
+ WHEN 0,6,8 : PROCrts
+ WHEN 9,10,11 : PROCrts : REM *EX, *INFO, *RUN (LibFS)
+ OTHERWISE  PRINT"OSFSC ";a?3 : Q=GET
+ENDCASE
+ENDPROC
+
+
+DEF PROCosfind
+addr=FNaddr(x?3+(y?3)*256)
+IF a?3=0 THEN
+ SYS "XOS_Find",0,y?3 TO A% ; F
+ A%=0:F=0 : REM fix for Master 128 !?!?
+ELSE
+ REMVDU4:PRINTTAB(0,0)"XXX";FNadd_($addr);"YYY";FN_path($addr);"ZZZ"
+ REMSYS "XOS_Find",(a?3) OR 1,FNadd_($addr),FN_path($addr) TO A% ; F
+ SYS "XOS_Find",(a?3) OR %11,FN_path($addr)+FNadd_($addr) TO A% ; F
+ENDIF
+IF (F AND 1)=0 THEN a?3=A% : PROCrts ELSE PROCswi_error
+ENDPROC
+
+
+DEF PROCosbget
+SYS "XOS_BGet",a?3,y?3 TO A% ; F%
+IF (F AND 1)=0 THEN
+ a?3=A%
+ ?f=?f AND %11111110
+ :
+ IF (F% AND 2)<>0 THEN ?f+=1
+ PROCrts
+ELSE
+ PROCswi_error
+ENDIF
+ENDPROC
+
+
+DEF PROCosbput
+SYS "XOS_BPut",a?3,y?3 TO A% ; F
+IF (F AND 1)=0 THEN PROCrts ELSE PROCswi_error
+ENDPROC
+
+
+DEF PROCsprite_save(F$)
+IF INSTR(F$,".")=0 AND INSTR(F$,":")=0 AND LEFT$(F$,6)<>"<Wimp$" THEN SYS "Wimp_ReportError","    To save, drag the file icon to a directory viewer":ENDPROC
+SYS "OS_SpriteOp",256+12,sprite,F$
+ENDPROC
+
+
+DEFFNkeymap(A$)
+LOCALI%
+FORI%=1 TO keymaps%
+ IF FNupper(keymap$(I%))=FNupper(A$) THEN =I%
+NEXT
+=0
+
+
+DEF PROCsetkeymap(A$)
+LOCALI%
+KeyMap$="Default"
+IF FNupper(A$)="RISCPC" OR FNupper(A$)="ARCHIMEDES" THEN
+ A$="Default"
+ENDIF
+OSCLI "Set 6502Em$Keymap "+A$
+PROCpokeicontext(12,A$)
+FORI%=1 TO keymaps%
+ IF FNupper(keymap$(I%))=FNupper(A$) THEN KeyMap$=A$:keymap%=I%:I%=1000
+NEXT
+PROCreadkeys("<6502Em$Dir>.Keymaps."+KeyMap$)
+ENDPROC
+
+
+DEF PROCreadkeymaps
+LOCAL offset%,N%
+keymap%=0
+keymaps%=0
+REPEAT
+ SYS "OS_GBPB",9,"<6502Em$Dir>.Keymaps",q%,100,offset%,&100,0 TO ,,,N%,offset%
+ keymaps%+=N%
+UNTIL offset%=-1
+IF keymaps%=0 THEN keysmenu%=-1:ENDPROC
+DIM keymap$(keymaps%), keysmenu% 32+24*keymaps%
+offset%=0
+FOR N%=1 TO keymaps%
+ SYS "OS_GBPB",9,"<6502Em$Dir>.Keymaps",q%,1,offset%,&100,0 TO ,,,,offset%
+ keymap$(N%)=FNstring(q%)
+NEXT
+ENDPROC
+
+
+DEF PROCreadspeeds
+LOCALI%
+Q=OPENIN"<6502Em$Res>.SpeedMenu"
+speeds%=-1
+REPEATspeeds%+=1
+ A$=GET$#Q
+UNTILEOF#Q OR A$=""
+IF A$="" THEN speeds%-=1
+PTR#Q=0
+DIM speed$(speeds%), speedmenu% 32+24*(speeds%+3)
+FORI%=0 TO speeds%
+ speed$(I%)=GET$#Q
+NEXT
+CLOSE#Q
+ENDPROC
+
+
+DEFFNstring(A%)
+LOCALA$,I%
+REPEAT
+ A$=A$+CHR$(A%?I%)
+ I%+=1
+UNTILA%?I%=0
+=A$
+
+
+DEFFNosword14_1_0 : REM Y2000 bug in osword 14
+LOCAL A%,B%
+A%=VALMID$(TIME$,14,1) : REM high digit of year
+B%=VALMID$(TIME$,15,1) : REM low digit of year
+=B%+(A%<<4) : REM BCD format
+
+
+DEFFNBCDyear : REM return top two digits of year in BCD format
+LOCAL A%,B%
+A%=VALMID$(TIME$,12,1) : REM high digit
+B%=VALMID$(TIME$,13,1) : REM low digit
+=B%+(A%<<4) : REM BCD format
+
+
+DEFFNosword14_1(A%)
+IF A%=0 THEN =FNosword14_1_0
+?buffer=1
+SYS "OS_Word",14,buffer
+=buffer?A%
+
+
+DEF PROCreadCMOS
+CASE x?3 AND 63 OF
+ WHEN 0    : y?3=FNosword14_1(6)
+ WHEN 1    : y?3=1
+ WHEN 2    : y?3=FNosword14_1(5)
+ WHEN 3    : y?3=1
+ WHEN 4    : y?3=FNosword14_1(4)
+ WHEN 5    : y?3=1
+ WHEN 6    : y?3=FNosword14_1(3)
+ WHEN 7    : y?3=FNosword14_1(2)
+ WHEN 8    : y?3=FNosword14_1(1)
+ WHEN 9    : y?3=FNosword14_1(0)
+ WHEN 10   : y?3=%00100000
+ WHEN 11   : y?3=%00000010
+ WHEN 12   : y?3=0
+ WHEN 13   : y?3=0
+OTHERWISE : y?3=cmos%(x?3 AND 63)
+ENDCASE
+:
+a?3=y?3
+:
+REMPRINTTAB(0,0);x?3 AND 63;" ";y?3;"  ":Q=GET
+PROCrts
+ENDPROC
+
+
+DEF PROCreadEEPROM
+y?3=eeprom%(x?3)
+a?3=y?3
+PROCrts
+ENDPROC
+
+
+DEF PROCwriteCMOS
+cmos%(x?3 AND 63)=y?3
+PROCrts
+IF (x?3 AND 63)>13 THEN
+ Q=OPENUP "<6502Em$Res>.CMOS"
+ PTR#Q=x?3 AND 63
+ BPUT#Q,y?3
+ CLOSE#Q
+ENDIF
+ENDPROC
+
+
+DEF PROCwriteEEPROM
+eeprom%(x?3)=y?3
+PROCrts
+Q=OPENUP "<6502Em$Res>.EEPROM"
+PTR#Q=x?3
+BPUT#Q,y?3
+CLOSE#Q
+ENDPROC
+
+
+DEF PROCloadCMOS
+LOCAL Q,I%
+Q=OPENIN "<6502Em$Res>.CMOS"
+FOR I%=0 TO 63
+ cmos%(I%)=BGET#Q
+NEXT
+CLOSE#Q
+ENDPROC
+
+
+DEF PROCloadEEPROM
+LOCAL Q,I%
+Q=OPENIN "<6502Em$Res>.EEPROM"
+FOR I%=0 TO 255
+ eeprom%(I%)=BGET#Q
+NEXT
+CLOSE#Q
+ENDPROC
+
+
+DEF PROCloadcode(C$)
+IF hires% THEN C$=C$+"_HR"
+OSCLI"LOAD <6502Em$Dir>."+C$+" "+STR$~code
+CALL code+!init_addr
+PROCsound_reinit
+ENDPROC
+
+
+DEF PROCmaster
+PROCloadcode("CodeM")
+OSCLI"LOAD <6502Em$Dir>.ROMS.M128.OS3,2 "+STR$~(memory+&C000)
+OSCLI"LOAD <6502Em$Dir>.ROMS.M128.OS3,2 "+STR$~(roms+romsize%*16)
+OSCLI"LOAD <6502Em$Res>.SHEILA "+STR$~sheila
+:
+FOR s%=15 TO 0 STEP -1
+ socket%=s%
+ CASE s% OF
+  WHEN 15:PROCloadROM("M128.Terminal",1)
+   ?(roms+romsize%*15+&18B7)=3
+   ?(roms+romsize%*15+&18B8)=&80 : REM intercept .readCMOS
+   ?(roms+romsize%*15+&18E4)=3
+   ?(roms+romsize%*15+&18E5)=&81 : REM intercept .writeCMOS
+   ?(roms+romsize%*15+&1881)=FNBCDyear : REM Millennium bug fix
+  WHEN 14:PROCloadROM("M128.View",1)
+   REM 13 is VDFS by default
+  WHEN 12:PROCloadROM("M128.BASICIV84",1)
+  WHEN 11:PROCloadROM("M128.Edit1,00",1)
+  WHEN 10:PROCloadROM("M128.ViewSheet",1)
+  WHEN 9:PROCloadROM("M128.DFS2,24",1)
+ OTHERWISE
+  A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*"
+  Q%=OPENINA$
+  IF Q%<>0 THEN
+   CLOSE#Q%
+   A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".~~~RAM"
+   Q%=OPENINA$
+   IF Q%<>0 THEN CLOSE#Q%:Q%=0 ELSE Q%=1
+   PROCloadROM("<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*",Q%)
+  ENDIF
+ ENDCASE
+NEXT
+socket%=7
+ENDPROC
+
+
+DEF PROCmaster35
+PROCloadcode("CodeM")
+OSCLI"LOAD <6502Em$Dir>.ROMS.M128.OS3,5 "+STR$~(memory+&C000)
+OSCLI"LOAD <6502Em$Dir>.ROMS.M128.OS3,5 "+STR$~(roms+romsize%*16)
+OSCLI"LOAD <6502Em$Res>.SHEILA "+STR$~sheila
+:
+FOR s%=15 TO 0 STEP -1
+ socket%=s%
+ CASE s% OF
+  WHEN 15:PROCloadROM("M128.Terminal35",1)
+   ?(roms+romsize%*15+&16A3)=3
+   ?(roms+romsize%*15+&16A4)=&80 : REM intercept .readCMOS
+   ?(roms+romsize%*15+&16D0)=3
+   ?(roms+romsize%*15+&16D1)=&81 : REM intercept .writeCMOS
+   ?(roms+romsize%*15+&1664)=FNBCDyear : REM Millennium bug fix
+  WHEN 14:PROCloadROM("M128.ViewB3,3",1)
+   REM 13 is VDFS by default
+  WHEN 12:PROCloadROM("M128.BASIC4r32",1)
+  WHEN 11:PROCloadROM("M128.Edit1,50r",1)
+  WHEN 10:PROCloadROM("M128.ViewSh1,01",1)
+  WHEN 9:PROCloadROM("M128.DFS2,45",1)
+ OTHERWISE
+  A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*"
+  Q%=OPENINA$
+  IF Q%<>0 THEN
+   CLOSE#Q%
+   A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".~~~RAM"
+   Q%=OPENINA$
+   IF Q%<>0 THEN CLOSE#Q%:Q%=0 ELSE Q%=1
+   PROCloadROM("<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*",Q%)
+  ENDIF
+ ENDCASE
+NEXT
+socket%=7
+ENDPROC
+
+
+DEF PROCcompact
+PROCloadcode("CodeM")
+OSCLI"LOAD <6502Em$Dir>.ROMS.Compact.OS5,1 "+STR$~(memory+&C000)
+OSCLI"LOAD <6502Em$Dir>.ROMS.Compact.OS5,1 "+STR$~(roms+&4000*16)
+OSCLI"LOAD <6502Em$Res>.SHEILA "+STR$~sheila
+:
+FOR s%=15 TO 0 STEP -1
+ socket%=s%
+ CASE s% OF
+  WHEN 15:PROCloadROM("Compact.Utils",1)
+   ?(roms+romsize%*15+&9E3A-&8000)=3
+   ?(roms+romsize%*15+&9E3B-&8000)=&82 : REM intercept .readCMOS
+   ?(roms+romsize%*15+&9F3A-&8000)=3
+   ?(roms+romsize%*15+&9F3B-&8000)=&83 : REM intercept .writeCMOS
+  WHEN 14:PROCloadROM("Compact.BASICIV86",1)
+   REM 13 is VDFS by default
+  OTHERWISE
+   A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*"
+   Q%=OPENINA$
+   IF Q%<>0 THEN
+    CLOSE#Q%
+    A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".~~~RAM"
+    Q%=OPENINA$
+    IF Q%<>0 THEN CLOSE#Q%:Q%=0 ELSE Q%=1
+    PROCloadROM("<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*",Q%)
+   ENDIF
+ ENDCASE
+NEXT
+socket%=7
+ENDPROC
+
+
+DEF PROCelectron
+PROCloadcode("CodeE")
+OSCLI"LOAD <6502Em$Dir>.ROMS.ELECTRON "+STR$~(memory+&C000)
+REMmemory?&F0E8=3 : REM OSFSC
+REMmemory?&FFCE=3 : REM OSFIND
+REMmemory?&FFD1=3 : REM OSGBPB
+REMmemory?&FFD4=3 : REM OSBPUT
+REMmemory?&FFD7=3 : REM OSBGET
+REMmemory?&FFDA=3 : REM OSARGS
+REMmemory?&FFDD=3 : REM OSFILE
+REMsocket%=15
+REMPROCloadROM("BASICII",1)
+REMPROCloadROM("VDFS",1)
+:
+FOR s%=15 TO 0 STEP -1
+ socket%=s%
+ CASE s% OF
+  WHEN 15
+   PROCloadROM("BASICII",1)
+  OTHERWISE
+   A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*"
+   Q%=OPENINA$
+   IF Q%<>0 THEN
+    CLOSE#Q%
+    A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".~~~RAM"
+    Q%=OPENINA$
+    IF Q%<>0 THEN CLOSE#Q%:Q%=0 ELSE Q%=1
+    PROCloadROM("<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*",Q%)
+   ENDIF
+ ENDCASE
+NEXT
+socket%=7
+ENDPROC
+
+
+DEF PROCBBCB
+PROCloadcode("Code")
+?ACCCON=0
+OSCLI"LOAD <6502Em$Dir>.ROMS.OS1,2 "+STR$~(memory+&C000)
+REMOSCLI"LOAD <6502Em$Dir>.ROMS.OS1,2 "+STR$~(roms+&4000*16)
+OSCLI"LOAD <6502Em$Res>.SHEILA "+STR$~sheila
+REMmemory?&F1B1=3 : REM OSFSC
+REMmemory?&FFCE=3 : REM OSFIND
+REMmemory?&FFD1=3 : REM OSGBPB
+REMmemory?&FFD4=3 : REM OSBPUT
+REMmemory?&FFD7=3 : REM OSBGET
+REMmemory?&FFDA=3 : REM OSARGS
+REMmemory?&FFDD=3 : REM OSFILE
+REMsocket%=15
+REMPROCloadROM("BASICII",1)
+REMPROCloadROM("VDFS",1)
+REMPROCSRRAM
+:
+FOR s%=15 TO 0 STEP -1
+ socket%=s%
+ CASE s% OF
+  WHEN 15
+   PROCloadROM("BASICII",1)
+  OTHERWISE
+   A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*"
+   Q%=OPENINA$
+   IF Q%<>0 THEN
+    CLOSE#Q%
+    A$="<6502Em$ROMPath>Autoload.Socket"+STR$s%+".~~~RAM"
+    Q%=OPENINA$
+    IF Q%<>0 THEN CLOSE#Q%:Q%=0 ELSE Q%=1
+    PROCloadROM("<6502Em$ROMPath>Autoload.Socket"+STR$s%+".*",Q%)
+   ENDIF
+ ENDCASE
+NEXT
+socket%=7
+ENDPROC
+
+
+DEF PROCnewmachine
+PROCclearmem(roms,roms+16*romsize%)
+PROCclearmem(memory-&200,memory+64*1024)
+PROCinitROMs
+:
+IF machine%>4 THEN machine%=0
+REMIF Machine%(machine%)=FALSE THEN machine%=default_machine%
+:
+PROCpokeicontext(10,Machine$(machine%))
+:
+CASE machine% OF
+ WHEN 1 :
+  IF Machine%(1)=0 THEN machine%+=1:PROCnewmachine:ENDPROC
+  PROCmaster
+ WHEN 2 :
+  IF Machine%(2)=0 THEN machine%+=1:PROCnewmachine:ENDPROC
+  PROCmaster35
+ WHEN 3 :
+  IF Machine%(3)=0 THEN machine%+=1:PROCnewmachine:ENDPROC
+  PROCcompact
+ WHEN 4 :
+  PROCelectron
+ OTHERWISE : PROCBBCB
+ENDCASE
+:
+REMPROCreset(1)
+REMOSRDCH_loc=FNpeek(&FFE0)
+OSRDCH_loc=memory?&FFE0
+:
+PROCreinstall(MachineSprite$(machine%))
+PROCreset(1)
+ENDPROC
+
+
+DEF PROCdefault_options
+tapefile$="<6502Em$Dir>.^.Tape-In"
+REMPalette%=TRUE
+OSRDCH%=TRUE
+ROMSEL%=TRUE
+Cursor%=FALSE
+Oscli%=FALSE
+machine%=default_machine%
+sound_on%=TRUE
+scroll_hack%=FALSE
+file_xxx=FALSE
+volume%=127
+PROCsetkeymap("Default")
+PROCnewspeed(100)
+framerate%=25
+PROCnewBBCmode(7)
+reverse_shiftbreak%=FALSE
+ENDPROC
+
+
+DEF PROCsave_options
+Q=OPENOUT"<6502Em$Res>.Options"
+PRINT#Q,0 : REM Palette%
+PRINT#Q,OSRDCH%
+PRINT#Q,ROMSEL%
+PRINT#Q,Cursor%
+PRINT#Q,Oscli%
+PRINT#Q,0
+PRINT#Q,machine%
+PRINT#Q,sound_on%
+PRINT#Q,file_xxx
+PRINT#Q,volume%
+PRINT#Q,KeyMap$
+PRINT#Q,speed
+PRINT#Q,framerate%
+PRINT#Q,BBCmode%
+PRINT#Q,reverse_shiftbreak%
+CLOSE#Q
+ENDPROC
+
+
+DEF PROCload_options
+tapefile$="<6502Em$Dir>.^.Tape-In"
+Q=OPENIN"<6502Em$Res>.Options"
+IF Q=0 THEN PROCdefault_options : ENDPROC
+LOCAL ERROR
+ON ERROR LOCAL SYS "XOS_Find",0,Q : SYS "XOS_CLI","Remove <6502Em$Dir>.Resources.Options" : RESTORE ERROR : PROCreport("Error in file !6502Em.Resources.Options - attempting to remove.") : PROCdefault_options : ENDPROC
+INPUT#Q,dummy% : REM Palette%
+INPUT#Q,OSRDCH%
+INPUT#Q,ROMSEL%
+INPUT#Q,Cursor%
+INPUT#Q,Oscli%
+INPUT#Q,exact%
+INPUT#Q,machine%
+INPUT#Q,sound_on%
+scroll_hack%=FALSE
+INPUT#Q,file_xxx
+INPUT#Q,volume%
+INPUT#Q,K$ : PROCsetkeymap(K$)
+INPUT#Q,speed
+INPUT#Q,framerate%:PROCshowframerate(framerate%)
+INPUT#Q,BBCmode%:PROCnewBBCmode(BBCmode%)
+INPUT#Q,reverse_shiftbreak%
+CLOSE#Q
+ENDPROC
+
+
+DEF PROCswapmem(A%,B%,C%)
+P%=buffer
+[OPT2
+.swap
+SUBS R2,R2,#4
+LDR R3,[R0,R2]
+LDR R4,[R1,R2]
+STR R3,[R1,R2]
+STR R4,[R0,R2]
+BNE swap
+MOV PC,R14
+]
+CALL swap
+ENDPROC
+
+
+DEF PROCclearmem(S%,E%)
+P%=buffer
+[OPT2
+EQUD S% ; memory
+EQUD E% ; memory+&8000
+.clear
+MOV R0,#0
+LDR R1,buffer
+LDR R2,buffer+4
+.loop
+STR R0,[R1],#4
+CMP R1,R2
+BNE loop
+MOV PC,R14
+]
+CALL clear
+ENDPROC
+
+
+DEF PROCosbyte2
+PROCrts
+ENDPROC
+
+
+DEF PROCosword2
+LOCALaddr,sec%,len%,buff%,track%,log_sec_size,drive%
+addr=memory?&F0
+addr+=memory?&F1 << 8
+addr=FNaddr(addr)
+CASE memory?&EF OF
+ WHEN &7F
+  IF dfssupport THEN
+   SYS "XImageDFS_OSWORD7F",,memory?&F0,memory?&F1,memory
+   a?3=0
+  ELSE
+   drive%=addr?0
+   buff%=FNaddr(addr!1 AND &FFFF)
+   track%=addr?7
+   sec%=addr?8
+   len%=(addr?9) AND %11111
+   log_sec_size=((addr?9) >> 5) + 7
+   buffer?0=log_sec_size
+   buffer?1=10
+   buffer?2=1 : REM heads
+   buffer?3=1
+   buffer!4=0
+   buffer!8=0
+   buffer!12=1 << 29 : REM drive% << 29
+   buffer!16=&64000
+   buffer!20=0
+   buffer!24=0
+   buffer!28=0
+   SYS "XADFS_DiscOp",,1+(buffer << 6),(track%*10+sec%)*2^log_sec_size+(osword7F_drive% << 29),buff%,len%*2^log_sec_size TO A% ; F
+   IF (F AND 1)=0 THEN addr?10=0 ELSE addr?10=A%
+   a?3=0
+  ENDIF
+  :
+ WHEN &72
+  REMPRINT"OSWORD 72";addr?5
+  IF addr?5=8 THEN
+   sec%=addr?8
+   sec%+=addr?7 << 8
+   sec%+=(addr?6 AND %11111) << 16
+   len%=addr?9
+   buff%=FNaddr(addr!1 AND &FFFF)
+   :
+   SYS "XADFS_DiscOp",,1,sec%*256+(osword72_drive% << 29),buff%,len%*256 TO A% ;F
+   IF (F AND 1)=0 THEN ?addr=0 ELSE ?addr=A%
+   :
+   REMOSCLI"SAVE MEM:DUMP "+STR$~buff%+" +"+STR$~(len%*256)+" "+STR$~(addr!1 AND &FFFF)
+   :
+   a?3=0 : REM claim service call!
+  ENDIF
+ OTHERWISE REMPRINT"OSWORD ";~?&EF:Q=GET
+ENDCASE
+:
+PROCrts
+REMPRINT~!pc_store
+REMQ=GET
+ENDPROC
+
+
+DEF PROCsplit(RETURN A$,RETURN B$)
+LOCAL I%
+WHILE LEFT$(A$,1)=" "
+ A$=RIGHT$(A$,LENA$-1)
+ENDWHILE
+:
+FORI%=2 TO LENA$
+ IF MID$(A$,I%,1)="+" THEN A$=LEFT$(A$,I%-1)+" "+RIGHT$(A$,1+LENA$-I%):I%=255
+NEXT
+I%=INSTR(A$," ")
+REMIF INSTR(A$,"+")>1 AND INSTR(A$,"+")<I% THEN I%=INSTR(A$,"+")
+B$=LEFT$(A$,I%-1)
+A$=RIGHT$(A$,LENA$-I%)
+ENDPROC
+
+
+DEF PROCsplit2(RETURN A$,RETURN B$)
+LOCAL I%
+WHILE LEFT$(A$,1)=" "
+ A$=RIGHT$(A$,LENA$-1)
+ENDWHILE
+:
+I%=INSTR(A$," ")
+B$=LEFT$(A$,I%-1)
+A$=RIGHT$(A$,LENA$-I%)
+ENDPROC
+
+
+DEF PROCsplit3(RETURN A$,RETURN B$)
+LOCAL I%,J%
+WHILE (LEFT$(A$,1)=" " OR LEFT$(A$,1)=".")
+ A$=RIGHT$(A$,LENA$-1)
+ENDWHILE
+:
+I%=INSTR(A$," ")
+J%=INSTR(A$,".")
+IF J%>0 AND (J%<I% OR I%=0) THEN I%=J%
+B$=LEFT$(A$,I%-1)
+A$=RIGHT$(A$,LENA$-I%)
+ENDPROC
+
+
+DEF PROCsrwrite
+LOCAL A$,C$,addr,I%,J%
+addr=memory?&F2
+addr+=(memory?&F3) << 8
+addr=FNaddr(addr)
+addr+=y?3
+C$=$addr
+:
+PROCsplit(C$,A$)
+:
+IF LENA$>4 THEN PROCbrk(0,"Bad Address"):ENDPROC
+FORI%=1 TO LENA$
+ J%=ASCMID$(A$,I%,1)
+ IF (J%<48 OR J%>57) AND (J%<65 OR J%>70) THEN PROCbrk(0,"Bad Address"):ENDPROC
+NEXT
+:
+start%=EVAL("&"+A$)
+:
+IF start%>&8000 THEN PROCbrk(0,"Bad Address"):ENDPROC
+:
+PROCsplit(C$,A$)
+:
+IF LEFT$(A$,1)="+" THEN end%=start%:A$=RIGHT$(A$,LENA$-1) ELSE end%=0
+:
+IF LENA$>4 THEN PROCbrk(0,"Bad Address"):ENDPROC
+FORI%=1 TO LENA$
+ J%=ASCMID$(A$,I%,1)
+ IF (J%<48 OR J%>57) AND (J%<65 OR J%>70) THEN PROCbrk(0,"Bad Address"):ENDPROC
+NEXT
+:
+end%+=EVAL("&"+A$)
+:
+IF end%<start% OR end%>&8000 THEN PROCbrk(0,"Bad Address"):ENDPROC
+:
+PROCsplit(C$,A$)
+:
+IF LENA$<>4 THEN PROCbrk(0,"Bad Address"):ENDPROC
+FORI%=1 TO LENA$
+ J%=ASCMID$(A$,I%,1)
+ IF (J%<48 OR J%>57) AND (J%<65 OR J%>70) THEN PROCbrk(0,"Bad Address"):ENDPROC
+NEXT
+:
+dest%=EVAL("&"+A$)
+:
+IF dest%<&8000 OR dest%>&BFFF THEN PROCbrk(0,"Bad Address"):ENDPROC
+:
+PROCsplit(C$,A$)
+CASE LENA$ OF
+WHEN 1
+ A%=ASCA$
+ IF A%>=ASC"W" AND A%<=ASC"Z" THEN A%=A%-ASC"W"+ASC"4"
+ IF A%>64 AND A%<71 THEN A%-=7
+ socket%=A%-48
+ IF socket%>15 OR socket%<0 THEN PROCbrk(0,"Bad Socket"):ENDPROC
+WHEN 2
+ IF LEFT$(A$,1)<"0" OR LEFT$(A$,1)>"9" OR RIGHT$(A$,1)<"0" OR RIGHT$(A$,1)>"9" THEN PROCbrk(0,"Bad Socket"):ENDPROC
+ socket%=VALA$
+ IF socket%>15 OR socket%<0 THEN PROCbrk(0,"Bad Socket"):ENDPROC
+OTHERWISE
+ PROCbrk(0,"Bad Socket"):ENDPROC
+ENDCASE
+:
+REMPRINT~start%,~end%,~dest%:Q=GET
+:
+FOR I%=0 TO FNmin(end%-start%,&BFFF-dest%) STEP 4
+ !(roms+romsize%*socket%+I%+dest%-&8000)=start%!(memory+I%)
+NEXT
+:
+ROMRAM?socket%=0
+:
+a?3=0
+PROCrts
+ENDPROC
+
+
+DEF PROCmount
+LOCAL A$,C$,addr,drive%
+addr=memory?&F2
+addr+=(memory?&F3) << 8
+addr=FNaddr(addr)
+REMaddr+=y?3
+C$=$addr
+:
+PROCstrip2(C$)
+:
+IF LEFT$(FNupper(C$),5)="MOUNT" THEN :C$="MOUNT "+RIGHT$(C$,LENC$-5)
+:
+PROCsplit3(C$,file$)
+:
+PROCsplit3(C$,A$)
+:
+drive%=VALA$
+:
+REMSYS "OS_File",5,"ADFS::"+A$+".$" TO Q
+SYS "ADFS_Drives" TO D%,F%,H%
+IF A$="" THEN a?3=0:PROCrts:ENDPROC
+IF drive%<F% OR (drive%>3 AND drive%<H%+4) THEN
+ fs$="ADFS:"
+ disc$=":"+STR$drive%+"."
+ path$="$"
+ subpath$=""
+ :
+ a?3=0
+ PROCrts
+ELSE
+ PROCbrk(0,"Bad drive "+A$):ENDPROC
+ENDIF
+ENDPROC
+
+
+DEF PROCdrive
+LOCAL A$,C$,addr,drive%
+addr=memory?&F2
+addr+=(memory?&F3) << 8
+addr=FNaddr(addr)
+REMaddr+=y?3
+C$=$addr
+PROCstrip2(C$)
+IF LEFT$(FNupper(C$),5)="DRIVE" THEN C$="DRIVE "+RIGHT$(C$,LENC$-5)
+:
+PROCsplit3(C$,file$)
+:
+PROCsplit3(C$,A$)
+drive%=VALC$
+:
+CASE C$ OF
+ WHEN "0","1","2","3"
+ IF dfssupport THEN
+  IF imagefile% THEN
+   path$=LEFT$(path$,INSTR(path$,"DFSSide2")-2)
+  ELSE
+   SYS "ImageDFS_DFSToADFSDrive",drive% TO dfsdrive%
+   REMpath$="ADFS::"+STR$drive%+".$"
+   fs$="ADFS:":disc$=":"+STR$dfsdrive%+".":path$="$"
+  ENDIF
+ ELSE
+  path$=LEFT$(path$,INSTR(path$,"DFSSide2")-2)
+ ENDIF
+ :
+ subpath$=""
+ IF drive%=2 OR drive%=3 THEN
+  SYS "OS_File",5,fs$+disc$+path$+".DFSSide2" TO Q
+  IF Q<>0 path$=path$+".DFSSide2"
+ ENDIF
+ :
+ WHEN "R","r"
+ PROCreadCSD
+OTHERWISE
+ PROCbrk(0,"Bad Drive "+C$):ENDPROC
+ENDCASE
+:
+a?3=0
+PROCrts
+ENDPROC
+
+
+DEF PROCsrload
+LOCAL A$,C$,addr,I%,J%
+addr=memory?&F2
+addr+=(memory?&F3) << 8
+addr=FNaddr(addr)
+addr+=y?3
+C$=$addr
+:
+PROCsplit2(C$,file$)
+:
+PROCsplit(C$,A$)
+IF LENA$<>4 THEN PROCbrk(0,"Bad Address"):ENDPROC
+FORI%=1 TO LENA$
+ J%=ASCMID$(A$,I%,1)
+ IF (J%<48 OR J%>57) AND (J%<65 OR J%>70) THEN PROCbrk(0,"Bad Address"):ENDPROC
+NEXT
+:
+load%=EVAL("&"+A$)
+IF load%<&8000 OR load%>&BFFF THEN PROCbrk(0,"Bad Address"):ENDPROC
+PROCsplit(C$,A$)
+IF RIGHT$(A$,1)="Q" THEN A$=LEFT$(A$,LENA$-1)
+:
+CASE LENA$ OF
+ WHEN 1
+  A%=ASCA$
+  IF A%>=ASC"W" AND A%<=ASC"Z" THEN A%=A%-ASC"W"+ASC"4"
+  IF A%>64 AND A%<71 THEN A%-=7
+  socket%=A%-48
+  IF socket%>15 OR socket%<0 THEN PROCbrk(0,"Bad Socket"):ENDPROC
+ WHEN 2
+  IF LEFT$(A$,1)<"0" OR LEFT$(A$,1)>"9" OR RIGHT$(A$,1)<"0" OR RIGHT$(A$,1)>"9" THEN PROCbrk(0,"Bad Socket"):ENDPROC
+  socket%=VALA$
+  IF socket%>15 OR socket%<0 THEN PROCbrk(0,"Bad Socket"):ENDPROC
+ OTHERWISE
+  PROCbrk(0,"Bad Socket"):ENDPROC
+ENDCASE
+:
+SYS "XOS_Find",&40+%1101,FNadd_(file$),FN_path(file$) TO A% ; F
+IF (F AND 1)<>0 THEN PROCswi_error:ENDPROC
+H%=A%
+SYS "XOS_GBPB",4,A%,load%-&8000+roms+romsize%*socket%,&C000-load% TO A% ; F
+IF (F AND 1)<>0 THEN PROCswi_error:ENDPROC
+?(ROMRAM+socket%)=0
+SYS "XOS_Find",0,H% TO A% ; F
+IF (F AND 1)<>0 THEN PROCswi_error:ENDPROC
+:
+a?3=0
+PROCrts
+ENDPROC
+
+
+DEF PROCelkkeys(F$)
+LOCAL Q,S$,K%,A$
+:
+SYS "6502_GetElectronMap" TO keymap
+FORI%=0 TO 1023 STEP 4
+ keymap!I%=&FF
+NEXT
+:
+Q=OPENINF$
+IF Q=0 THEN ERROR 0,F$+" not found"
+REPEAT
+ S$=FNgetword
+ IF LEFT$(S$,1)="#" THEN
+  PROCignoreline
+  IF INSTR(S$,"RiscPC") AND INKEY-256<&A5 THEN S$=""
+ ELSE
+  IF S$<>"" THEN
+   S%=FNgetelk(S$)
+   REPEAT
+    A$=FNgetword
+    IF A$<>"" THEN
+      K%=FNgetarc(A$)
+      keymap!(K%*4)=S%
+    ENDIF
+   UNTILA$=""
+  ENDIF
+ ENDIF
+UNTIL S$="" OR EOF#Q
+CLOSE#Q
+ENDPROC
+
+
+DEF PROCreadkeys(F$)
+LOCAL Q,S$,K%,A$,shift%
+:
+SYS "6502_ReadKeyMapAddress" TO keymap
+FORI%=0 TO 255+256
+ keymap?I%=255
+NEXT
+:
+Q=OPENINF$
+IF Q=0 THEN ERROR 0,F$+" not found"
+REPEAT
+ S$=FNgetword
+ IF LEFT$(S$,1)="#" THEN
+  PROCignoreline
+  IF INSTR(S$,"RiscPC") AND INKEY-256<&A5 THEN S$=""
+ ELSE
+  IF S$<>"" THEN
+   IF LEFT$(S$,1)="s" AND LENS$>1 THEN shift%=TRUE:S$=RIGHT$(S$,LENS$-1) ELSE shift%=FALSE
+   REMVDU4:PRINTS$:VDU5:PRINTGET
+   S%=FNgetbbc(S$)
+   REPEAT
+    A$=FNgetword
+    IF A$<>"" THEN
+     K%=FNgetarc(A$)
+     IF shift%=FALSE THEN keymap?K%=S%
+     keymap?(K%+256)=S%
+    ENDIF
+   UNTILA$=""
+  ENDIF
+ ENDIF
+UNTIL S$="" OR EOF#Q
+CLOSE#Q
+ENDPROC
+
+
+DEFFNgetword
+LOCAL I%,A$
+REPEAT I%=BGET#Q : UNTIL I%>32 OR I%=10
+IF I%=10 THEN =""
+A$=CHR$I%
+REPEAT I%=BGET#Q : A$=A$+CHR$I% : UNTIL I%<33
+PTR#Q=PTR#Q-1
+=LEFT$(A$,LENA$-1)
+
+
+DEF PROCignoreline
+LOCALI%
+REPEAT I%=BGET#Q : UNTILI%=&A
+ENDPROC
+
+
+DEFFNgetelk(A$)
+LOCALI%,J%,K%
+FORI%=0 TO 3
+ FORJ%=0 TO 13
+  IF Elec$(I%,J%)=A$ THEN K%=(I%<<8)+J%:I%=4:J%=14
+ NEXT
+NEXT
+=K%
+
+
+DEFFNgetbbc(A$)
+LOCALI%,J%
+FOR I%=0 TO &7C
+ IF BBC$(I%)=A$ THEN J%=I%:I%=&80
+NEXT
+=J%
+
+
+DEFFNgetarc(A$)
+LOCALI%,J%
+FOR I%=&0 TO &78
+ IF ARC$(I%)=A$ THEN J%=I%:I%=&68
+NEXT
+=J%
+
+
+REM Electron Keys
+DATA Escape,1,2,3,4,5,6,7,8,9,0,-,Left,Right
+DATA CapsLock,Q,W,E,R,T,Y,U,I,O,P,Up,Down,Copy
+DATA Ctrl,A,S,D,F,G,H,J,K,L,;,:,Return,""
+DATA Shift,Z,X,C,V,B,N,M,",",.,/,"",Delete,Space
+
+
+REM BBC Keys
+DATA Shift,Ctrl,bit7,bit6,bit5,bit4,bit3,bit2,bit1,bit0,"","",""
+DATA Q,3,4,5,f4,8,f7,-,^,Left,K6,K7,""
+DATA f0,W,E,T,7,I,9,0,_,Down,K8,K9,""
+DATA 1,2,D,R,6,U,O,P,[,Up,K+,K-,KReturn
+DATA CapsLock,A,X,F,Y,J,K,@,:,Return,K/,KDelete,"K."
+DATA ShiftLock,S,C,G,H,N,L,;,],Delete,K#,K*,"K,"
+DATA Tab,Z,Space,V,B,M,",",".",/,Copy,K0,K1,K3
+DATA Escape,f1,f2,f3,f5,f6,f8,f9,\,Right,K4,K5,K2
+
+
+REM RISC OS Keys
+REM 0-15
+DATA Escape,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,"",Print,"ScrollLock","Break"
+REM 16-75
+DATA `,1,2,3,4,5,6,7,8,9,0,-,=,"£",<-|,Insert,Home,PageUp,NumLock,K/,K*,K#,Tab,Q,W,E,R,T,Y,U,I,O,P,[,],#,Delete,Copy,PageDown,K7,K8,K9,K-,LCtrl,A,S,D,F,G,H,J,K,L,;,',Return,K4,K5,K6,K+
+REM 76-103
+DATA LShift,\,Z,X,C,V,B,N,M,",",.,/,RShift,Up,K1,K2,K3,CapsLock,LAlt,Space,RAlt,RCtrl,Left,Down,Right,K0,K.,Enter
+REM 104-119
+DATA "WinL","","","","","","","","Select","Menu","Adjust","","","","",""
+REM 120
+REMDATA # : REM Risc PC key #~
+DATA ""
+
+
+DEF PROCsetmemmap
+IF paging%=FALSE OR machine%=0 OR machine%=4 THEN ENDPROC
+!&97000=&A0A0A0A0
+!&97004=&A0A0A0A0
+!&97008=&A0A0A0A0
+!&9700C=&A0A0A0A0
+REMIF (?ACCCON AND %100)<>0 THEN ?&97003=&8D:!&97004=&8D8D8D8D:PROCswapmem(&A3000,&90000,&5000)
+PROCswapmem(&A8000,roms+(?romsel AND %1111)*romsize%,romsize%)
+?&97008=&44+(?romsel AND %1111)*4
+?&97009=&44+(?romsel AND %1111)*4
+?&9700A=&44+(?romsel AND %1111)*4
+?&9700B=&44+(?romsel AND %1111)*4
+IF (?ACCCON AND %1000)<>0 THEN ?&9700C=&89:?&9700D=&89:PROCswapmem(&AC000,&95000,&2000)
+IF (?romsel AND %10000000)<>0 THEN ?&97008=&89:PROCswapmem(&A8000,&9D000,&1000)
+ENDPROC
+
+
+DEF PROCsetmemmap2
+IF paging%=FALSE OR machine%=0 OR machine%=4 THEN ENDPROC
+IF (?romsel AND %10000000)<>0 THEN PROCswapmem(&A8000,&9D000,&1000)
+IF (?ACCCON AND %1000)<>0 THEN PROCswapmem(&AC000,&95000,&2000)
+PROCswapmem(&A8000,roms+(?romsel AND %1111)*romsize%,romsize%)
+REMIF (?ACCCON AND %100)<>0 THEN PROCswapmem(&A3000,&90000,&5000)
+ENDPROC
+
+
+DEFFNpeek(A%)=?FNaddr(A%)
+
+
+DEFFNaddr(A%)=memory+A%
+
+
+DEFFNaddr2(A%)
+LOCAL B%,C%,D%
+IF paging% AND (machine%>0 AND machine%<4) THEN
+ B%=&97000+(A%>>>12)
+ C%=(?B%)<<12
+ D%=A%+C%
+ELSE
+ D%=memory+A%
+ENDIF
+=D%
+
+
+DEF PROCpoke(A%,V%)
+memory?A%=V%:ENDPROC
+
+
+DEF PROCdisableCFS
+IF machine%>0 AND machine%<4 THEN ENDPROC
+vectors%=memory?&FFB7+(memory?&FFB8<<8)
+:
+vectors%=FNaddr(vectors%)
+addr%=vectors%?&1E+(vectors%?&1F<<8)
+memory2=roms+romsize%*16-&C000
+:
+memory?addr%=3 : REM OSFSC
+memory2?addr%=3
+memory?&FFCE=3 : REM OSFIND
+memory2?&FFCE=3
+memory?&FFD1=3 : REM OSGBPB
+memory2?&FFD1=3
+memory?&FFD4=3 : REM OSBPUT
+memory2?&FFD4=3
+memory?&FFD7=3 : REM OSBGET
+memory2?&FFD7=3
+memory?&FFDA=3 : REM OSARGS
+memory2?&FFDA=3
+memory?&FFDD=3 : REM OSFILE
+memory2?&FFDD=3
+ENDPROC
+
+
+DEF PROCboot
+REMSYS "OS_FSControl",11,fs$ : REM set temporary filing system
+REMSYS "OS_FSControl",0,disc$+path$+subpath$ : REM change dir
+REMSYS "XOS_GBPB",5,,buffer
+REMSYS "OS_FSControl",19
+REMboot%=?(buffer+?buffer+1)
+PROCrts
+:
+IF machine%<>0 THEN ENDPROC
+:
+Q=OPENIN(fs$+disc$+path$+subpath$+".!Boot")
+IF Q<>0 THEN CLOSE#Q:disable_reset=TRUE:PROCfile_load(fs$+disc$+path$+subpath$+".!Boot"):disable_reset=FALSE:ENDPROC
+Q=OPENIN(fs$+disc$+path$+subpath$+".!Run")
+IF Q<>0 THEN CLOSE#Q:disable_reset=TRUE:PROCsnap_load(fs$+disc$+path$+subpath$+".!Run"):disable_reset=FALSE:ENDPROC
+:
+PROCbrk(214,"File not found")
+ENDPROC
+
+
+DEF PROCopenmenu(menu%,X%,Y%)
+PROCmenus
+SYS "Wimp_CreateMenu",,menu%,X%,Y%
+current_menu%=menu%
+ENDPROC
+
+
+DEF PROCconfig
+q%!0=config%
+CASE i% OF
+ WHEN 1
+  q%!4=1:SYS "Wimp_GetIconState",,q% : ROMSEL%=((q%!24 AND 2^21)<>0)
+ WHEN 2
+  q%!4=2:SYS "Wimp_GetIconState",,q% : reverse_shiftbreak%=((q%!24 AND 2^21)<>0)
+ WHEN 3
+  q%!4=3:SYS "Wimp_GetIconState",,q% : Cursor%=((q%!24 AND 2^21)<>0)
+ WHEN 4
+  q%!4=4:SYS "Wimp_GetIconState",,q% : Oscli%=((q%!24 AND 2^21)<>0)
+ WHEN 5
+  REMq%!4=5:SYS "Wimp_GetIconState",,q% : scroll_hack%=((q%!24 AND 2^21)<>0)
+ WHEN 6
+  q%!4=6:SYS "Wimp_GetIconState",,q% : file_xxx=((q%!24 AND 2^21)<>0)
+  IF file_xxx THEN OSCLI"IconSprites "+file_xxx$ ELSE OSCLI"IconSprites "+no_xxx$
+  SYS "Wimp_ForceRedraw",-1,0,0,10000,10000:REM update filer & configure window
+ WHEN 7
+  q%!4=7:SYS "Wimp_GetIconState",,q% : sound_on%=((q%!24 AND 2^21)<>0)
+ WHEN 10 : IF mb%=2 THEN PROCopenmenu(machine_menu%,mx%-64,my%)
+ WHEN 11 : PROCopenmenu(machine_menu%,mx%-64,my%)
+ WHEN 12 : IF mb%=2 PROCopenmenu(keysmenu%,mx%-64,my%)
+ WHEN 13 : PROCopenmenu(keysmenu%,mx%-64,my%)
+ WHEN 14 : IF mb%=2 PROCopenmenu(framemenu%,mx%-64,my%)
+ WHEN 15 : PROCopenmenu(framemenu%,mx%-64,my%)
+ WHEN 16 : IF mb%=2 PROCopenmenu(speedmenu%,mx%-64,my%)
+ WHEN 17 : PROCopenmenu(speedmenu%,mx%-64,my%)
+ WHEN 18 : IF mb%=2 PROCopenmenu(modemenu%,mx%-64,my%)
+ WHEN 19 : PROCopenmenu(modemenu%,mx%-64,my%)
+ WHEN 20 : PROCdefault_options:PROCsetconfig
+ WHEN 21 : PROCsave_options
+ WHEN 22 : !q%=config% : SYS "Wimp_CloseWindow",,q%
+ENDCASE
+ENDPROC
+
+
+DEF PROCsetconfig
+!q%=config%:q%!12=2^21
+q%!4=1:q%!8=-2^21*(ROMSEL%<>0):SYS "Wimp_SetIconState",,q%
+q%!4=2:q%!8=-2^21*(reverse_shiftbreak%<>0):SYS "Wimp_SetIconState",,q%
+q%!4=3:q%!8=-2^21*(Cursor%<>0):SYS "Wimp_SetIconState",,q%
+q%!4=4:q%!8=-2^21*(Oscli%<>0):SYS "Wimp_SetIconState",,q%
+REMq%!4=5:q%!8=-2^21*(scroll_hack%<>0):SYS "Wimp_SetIconState",,q%
+q%!4=6:q%!8=-2^21*(file_xxx<>0):SYS "Wimp_SetIconState",,q%
+q%!4=7:q%!8=-2^21*(sound_on%<>0):SYS "Wimp_SetIconState",,q%
+PROCpokeicontext(16,STR$speed+"%")
+buffer!0=0:buffer!4=0:buffer!8=0
+SYS "OS_ReadVarVal","6502Em$Keymap",buffer,255 TO ,S$
+keymap%=FNkeymap(S$)
+PROCpokeicontext(12,S$)
+ENDPROC
+
+
+DEF PROCpokeicontext(N%,A$)
+q%!0=config%
+q%!4=N%
+SYS "Wimp_GetIconState",,q%
+$(q%!28)=A$+CHR$0
+q%!8=0:q%!12=0
+SYS "Wimp_SetIconState",,q%
+ENDPROC
+
+
+DEF PROCnewspeed(S)
+speed=S
+PROCpokeicontext(16,STR$speed+"%")
+ENDPROC
+
+
+DEF PROCnewBBCmode(S%)
+BBCmode%=S% AND 7
+PROCpokeicontext(18,STR$BBCmode%)
+ENDPROC
+
+
+DEF PROCdfsimage(A$)
+SYS "XOS_SWINumberFromString",,"ImageDFS_Version" TO ; F
+IF (F AND 1)=0 THEN dfssupport=TRUE ELSE dfssupport=FALSE
+:
+IF dfssupport=FALSE THEN
+ REMPROCreport("ImageDFS (available from WSS) must be loaded to access this file"):ENDPROC
+ OSCLI"WimpTask <6502Em$Dir>.DecodeDFS "+A$
+ELSE
+ imagefile%=TRUE
+ PROCfile_load(A$+".!BOOT")
+ PROCBBC
+ENDIF
+ENDPROC
+
+
+DEF PROCreport(A$)
+SYS"Wimp_ReportError","    "+A$,%11001,"6502Em"
+ENDPROC
+
+
+DEF PROCopenconfig
+PROCsetconfig
+q%!0=config%
+SYS "Wimp_GetWindowState",,q%
+:
+IF config_open%=FALSE THEN
+ SYS "OS_ReadModeVariable",-1,4 TO ,,xeig%
+ SYS "OS_ReadModeVariable",-1,5 TO ,,yeig%
+ SYS "OS_ReadModeVariable",-1,11 TO ,,screenx%
+ SYS "OS_ReadModeVariable",-1,12 TO ,,screeny%
+ sx%=q%!12-q%!4 : sy%=q%!16-q%!8
+ q%!4=((screenx%<<xeig%)-sx%)/2
+ q%!8=((screeny%<<yeig%)-sy%)/2
+ q%!12=q%!4+sx%
+ q%!16=q%!8+sy%
+ENDIF
+:
+q%!28=-1
+SYS "Wimp_OpenWindow",,q%
+ENDPROC
+
+
+DEF PROCsetDIPs
+LOCAL A%,B%,C%
+SYS "6502_Getkeyaddr" TO A% : C%=A%+256
+B%=BBCmode% EOR %111
+A%?7=(B% AND %100) >> 2 : C%?7=A%?7
+A%?8=(B% AND %010) >> 1 : C%?8=A%?8
+A%?9=(B% AND %001) >> 0 : C%?9=A%?9
+A%?6=reverse_shiftbreak% AND 1 : C%?6=A%?6
+ENDPROC
+
+
+DEFFNstripquotes(b$)
+LOCAL I%
+IF LEFT$(b$,1)<>CHR$34 OR LENb$=1 THEN =b$
+FOR I%=2 TO LENb$
+ IF MID$(b$,I%,1)=CHR$34 THEN =MID$(b$,2,I%-2)
+NEXT
+=b$

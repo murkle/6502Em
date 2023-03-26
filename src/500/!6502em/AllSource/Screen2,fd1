@@ -1,0 +1,1883 @@
+REM > Screen2
+
+DEFFNscreen
+
+IF electron% THEN
+screen_mask%=%111111
+screen_shift%=1
+ELSE
+screen_mask%=%11111
+screen_shift%=3
+ENDIF
+
+[OPTp
+
+.strb
+.strb3000 ; greater than 3000
+CMP R1,#&8000
+BGE strb8000
+
+.update_pixel
+.strb_screen ; between 3000 and 8000
+
+]
+IF master THEN
+[OPTp
+
+LDRB R12,[mem,#ACCCON]
+
+CMP zpc,#&C000 << 16
+MOVLT R13,R12,LSR#1
+MOVGE R13,R12
+CMP zpc,#&E000 << 16
+MOVGE R13,R12,LSR#1    ; now bit 1 of R13 is what
+                       ; we must look at
+
+;CMP zpc,#&C000 << 16
+;MOVLT R13,#0
+;EORGE R13,R12,R12,LSR#1
+;CMP zpc,#&E000 << 16
+;MOVGE R13,#0 ; now look at bit 1 of R13
+
+;TST R13,#%10
+;SUBNE R2,mem,#(&3000+&10000) ; shadow screen memory
+;STRNEB R0,[R2,R1]
+;STREQB R0,[mem,R1]
+
+MOV R2,#pagetable
+LDRB R2,[R2,R1,LSR#12]
+TST R13,#%10
+MOVNE R2,#&8D
+STRB R0,[R1,R2,LSL#12]
+
+MOV PC,R14
+
+;EOR R12,R12,R13,LSR#1
+;TST R12,#%1           ; are we writing to displayed memory?
+;MOVNE PC,R14
+;CMP R1,F,LSR#16 ; wrap_addr
+;MOVLT PC,R14
+]
+ELSE
+[OPTp
+STRB R0,[mem,R1]
+]
+ENDIF
+
+[OPTp
+MOV PC,R14
+
+.Xstrb
+.Xstrb3000 ; greater than 3000
+CMP R1,#&8000
+BGE strb8000
+
+.Xupdate_pixel
+.Xstrb_screen ; between 3000 and 8000
+
+]
+IF master THEN
+[OPTp
+
+LDRB R12,[mem,#ACCCON]
+
+CMP zpc,#&C000 << 16
+MOVLT R13,R12,LSR#1
+MOVGE R13,R12
+CMP zpc,#&E000 << 16
+MOVGE R13,R12,LSR#1    ; now bit 1 of R13 is what
+                       ; we must look at
+
+TST R13,#%10
+SUBNE R2,mem,#(&3000+&10000) ; shadow screen memory
+STRNEB R0,[R2,R1]
+STREQB R0,[mem,R1]
+
+EOR R12,R12,R13,LSR#1
+TST R12,#%1           ; are we writing to displayed memory?
+MOVNE PC,R14
+CMP R1,F,LSR#16 ; wrap_addr
+MOVLT PC,R14
+]
+ELSE
+[OPTp
+STRB R0,[mem,R1]
+]
+ENDIF
+
+IF electron% THEN
+[OPTp
+TST F,#1 << 12
+MOVNE PC,R14 ; "mode 7"
+]
+ELSE
+[OPTp
+LDRB R12,[mem,#crt_regs+3]
+TST R12,#1 << 4
+TSTNE R1,#%100
+MOVNE PC,R14 ; fortress
+]
+ENDIF
+
+[OPTp
+LDRB R12,[mem,#crt_regs+13]
+LDRB R2,[mem,#crt_regs+12]
+AND R2,R2,#%111111
+ADD R12,R12,R2,LSL#8
+]
+IF electron% THEN [OPTp:MOV R12,R12,LSR#2:]
+[OPTp
+;MOV R12,R12,LSL#3
+
+
+SUBS R1,R1,R12,LSL#3         ; addr-screenstart
+BGE wrap_skip2
+;LDR R13,wrap_addr
+ADD R1,R1,#&8000
+SUBS R1,R1,F,LSR#16 ; wrap_addr
+MOVMI PC,R14
+.wrap_skip2
+
+LDRB R12,[mem,#crt_regs+1] ; horiz. chars
+LDRB R13,[mem,#crt_regs+6] ; vert. chars
+MUL R13,R12,R13
+MOV R13,R13,LSL#3 ; screen size
+CMP R1,R13
+MOVGE PC,R14
+STR R14,[mem,#scratch]
+;RJW was here...
+STR R1,[mem,#scratch+4]
+AND R14,R1,#%111
+MOV R1,R1,LSR#3
+
+CMP   R1,R12,LSL#7
+SUBGE R1,R1,R12,LSL#7
+ADDGE R14,R14,#1<<10
+
+CMP   R1,R12,LSL#6
+SUBGE R1,R1,R12,LSL#6
+ADDGE R14,R14,#1<<9
+
+CMP   R1,R12,LSL#5
+SUBGE R1,R1,R12,LSL#5
+ADDGE R14,R14,#1<<8
+
+CMP   R1,R12,LSL#4
+SUBGE R1,R1,R12,LSL#4
+ADDGE R14,R14,#1<<7
+
+CMP   R1,R12,LSL#3
+SUBGE R1,R1,R12,LSL#3
+ADDGE R14,R14,#1<<6
+
+CMP   R1,R12,LSL#2
+SUBGE R1,R1,R12,LSL#2
+ADDGE R14,R14,#1<<5
+
+CMP   R1,R12,LSL#1
+SUBGE R1,R1,R12,LSL#1
+ADDGE R14,R14,#1<<4
+
+CMP   R1,R12
+SUBGE R1,R1,R12
+ADDGE R14,R14,#1<<3
+
+;LDR R12,[mem,#patch_on]
+;CMP R12,#0 : ;BNE patch
+TST F,#1 << 8 : BNE patch_pixel2 ; patch_pixel2
+
+; RJW was here (twice)
+LDRB R12,[mem,#fe20]
+MOVS R12,R12,ASR#2
+; I assume Prob(CC) > Proc(CS)
+LDRCC PC,updatepixelV
+MOV PC,R14
+
+.patch_pixel2
+ADR R13,patch_exit2
+B patch_pixel
+
+.poke_updatepixelV
+LDRB R12,[mem,#fe20]
+
+AND R12,R12,#7<<2
+ADR R2,uptab
+LDR R12,[R2,R12]
+ADD R2,R2,R12
+STR R2,updatepixelV
+MOV PC,R14
+
+.patch_exit2
+B updatepixel1 ; hack
+
+.uptab
+EQUD updatepixel4-uptab ;000 00
+EQUD updatepixel5-uptab ;001 00
+EQUD updatepixel4-uptab ;010 00
+EQUD updatepixel0-uptab ;011 00
+EQUD updatepixel1-uptab ;100 00
+EQUD updatepixel2-uptab ;101 00
+EQUD updatepixel1-uptab ;110 00
+EQUD updatepixel0-uptab ;111 00
+
+.updatepixelV
+EQUD 0
+
+.updatepixel0
+
+; RJW was here
+ADD R14,R14,R14,LSL#2 ;
+
+ADD R14,R1,R14,LSL#4 ; offset in arc screen of byte
+
+FNADR(13,mode0tab)
+LDR R0,[R13,R0] ; load 1 byte from table
+
+LDR R13,[mem,#arc_screenstart]
+STRB R0,[R13,R14]
+LDR PC,[mem,#scratch]
+
+.updatescreen0
+FNADR(8,mode0tab)
+.updatescreen0_entry
+LDRB R0,[mem,#lastmode]
+CMP R0,#99
+BEQ skip_mode0
+SWI &116
+SWI &100+12 ; MODE 0
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode]
+.skip_mode0
+
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+
+FNshadow
+
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+
+MOV R5,#320 : SUB R5,R5,R2,LSL#2 ; LN2(320/80)
+MOVMI R5,#0
+
+ADD R9,R9,R5,LSR#2
+
+ADD R7,R7,R13 ; add arc address of BBC's memory
+ADD R11,R13,#&8000 ; address of end of screen mem
+ADD R12,R12,R13 ; address to wrap to
+
+SUB R12,R11,R12
+
+MOV R14,R7
+MOV R6,R2
+.loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+LDRB R0,[R7],#8
+LDR R0,[R8,R0,LSL#2]
+STR R0,[R9],#4
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+;LDRB R2,[R6,#1] ; no of horiz chars
+MOV R2,R6 ; no of horiz chars
+SUB R7,R7,R2,LSL#3 : ADD R7,R7,#1
+ADD R14,R14,#1
+
+TST R7,#%111 : BNE loop1 ; have we done a multiple of 8 rows?
+ADD R7,R7,R2,LSL#3 : SUB R7,R7,#8
+ADD R14,R14,R2,LSL#3 : SUB R14,R14,#8
+
+;CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+SUBS R4,R4,R2 ; have we got to bottom?
+BHI loop1
+
+
+
+LDMEA mem,{R4-R11,PC}
+
+.draw_first_lineXX
+
+STMFD mem,{R4-R11,R14}
+
+
+.draw_first_line0
+FNADR(8,mode0tab)
+
+.draw_first_line0_entry
+LDRB R0,[mem,#lastmode]
+CMP R0,#99
+BEQ skip_mode0x
+FNchangemode
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode]
+.skip_mode0x
+
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+
+FNshadow
+
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+
+LDRB R11,[R6,#5] ; vertical adjust
+AND R11,R11,#7
+
+ADD R11,R11,R11,LSL#2
+
+MOV R0,R11,LSL#6 : MOV R14,#0
+.blank_loop
+STR R14,[R9,R0]
+SUBS R0,R0,#4
+BGE blank_loop
+
+ADD R9,R9,R11,LSL#7 ; R11 * 320
+
+MOV R5,#320*2 : SUBS R5,R5,R2,LSL#3 ; LN2(320/80)
+MOVMI R5,#0
+
+ADDGE R9,R9,R5,LSR#1 ; CENTRE SCREEN
+
+ADD R5,R5,#640 ; PIXEL DOUBLE
+
+ADD R7,R7,R13 ; add arc address of BBC's memory
+ADD R11,R13,#&8000 ; address of end of screen mem
+ADD R12,R12,R13 ; address to wrap to
+
+SUB R12,R11,R12
+
+MOV R14,R7
+MOV R6,R2
+.loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+;mode 12
+;LDRB R0,[R7],#8
+;LDR R0,[R8,R0,LSL#2]
+;STR R0,[R9],#4
+
+;mode 15 (mode 0)
+;LDRB R0,[R7] ; ,#8
+;MOV R0,R0,LSR#4
+;LDR R0,[R8,R0,LSL#2]
+;STR R0,[R9],#4
+;LDRB R0,[R7],#8
+;AND R0,R0,#&0F
+;LDR R0,[R8,R0,LSL#2]
+;STR R0,[R9],#4
+
+;mode 15 (mode2)
+LDRB R0,[R7]
+LDR R0,[R8,R0,LSL#3]
+STR R0,[R9,#640] ; PIXEL DOUBLE
+STR R0,[R9],#4
+LDRB R0,[R7],#8
+ADD R8,R8,#4: LDR R0,[R8,R0,LSL#3] : SUB R8,R8,#4
+STR R0,[R9,#640] ; PIXEL DOUBLE
+STR R0,[R9],#4
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+ADR R0,regstore
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+
+
+LDMEA mem,{R4-R11,PC}
+
+.draw_general_line0
+ADR R8,mode0tab
+
+.draw_general_line0_entry
+
+ADR R0,regstore
+LDMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+
+LDR R0,[mem,#arc_screenstart]:SUBS R2,R9,R0:BMI line0_exit:SUBS R2,R2,#640*512:BPL line0_exit ; check R9 lies within screen
+
+ADD R9,R9,R5
+
+MOV R2,R6 ; no of horiz chars
+LDRB R2,[mem,#crt_regs+1]
+
+SUB R7,R7,R2,LSL#3 : ADD R7,R7,#1
+ADD R14,R14,#1
+
+TST R7,#%111 : BNE line0_loop1 ; have we done a multiple of 8 rows?
+ADD R7,R7,R2,LSL#3 : SUB R7,R7,#8
+ADD R14,R14,R2,LSL#3 : SUB R14,R14,#8
+
+;CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+SUBS R4,R4,R2 ; have we got to bottom?
+BLS line0_exit
+;BHI line0_loop1
+
+
+
+.line0_loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+; mode 12
+;LDRB R0,[R7],#8
+;LDR R0,[R8,R0,LSL#2]
+;STR R0,[R9],#4
+
+; mode 15 (MODE0)
+;LDRB R0,[R7] ; ,#8
+;MOV R0,R0,LSR#4
+;LDR R0,[R8,R0,LSL#2]
+;STR R0,[R9],#4
+;LDRB R0,[R7],#8
+;AND R0,R0,#&0F
+;LDR R0,[R8,R0,LSL#2]
+;STR R0,[R9],#4
+
+;mode 15 (mode2)
+LDRB R0,[R7]
+LDR R0,[R8,R0,LSL#3]
+STR R0,[R9,#640] ; PIXEL DOUBLE
+STR R0,[R9],#4
+LDRB R0,[R7],#8
+ADD R8,R8,#4: LDR R0,[R8,R0,LSL#3] : SUB R8,R8,#4
+STR R0,[R9,#640] ; PIXEL DOUBLE
+STR R0,[R9],#4
+
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+ADR R0,regstore
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#1
+LDMEA mem,{R4-R11,PC}
+
+.line0_exit
+ADR R0,regstore
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+
+.draw_blank_line
+
+ADR R0,regstore
+LDMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+LDR R0,[mem,#arc_screenstart]:SUBS R2,R9,R0:BMI lineb_exit:SUBS R2,R2,#640*512:BPL lineb_exit ; check R9 lies within screen
+
+ADD R9,R9,R5
+
+MOV R2,R6 ; no of horiz chars
+SUB R7,R7,R2,LSL#3 : ADD R7,R7,#1
+ADD R14,R14,#1
+
+TST R7,#%111 : BNE lineb_loop1 ; have we done a multiple of 8 rows?
+ADD R7,R7,R2,LSL#3 : SUB R7,R7,#8
+ADD R14,R14,R2,LSL#3 : SUB R14,R14,#8
+
+;CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+SUBS R4,R4,R2 ; have we got to bottom?
+BLS lineb_exit
+;BHI line0_loop1
+
+
+
+.lineb_loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+MOV R0,#0 ; store zero
+STR R0,[R9,#640] ; PIXEL DOUBLE
+STR R0,[R9],#4
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+ADR R0,regstore
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#1
+LDMEA mem,{R4-R11,PC}
+
+.lineb_exit
+ADR R0,regstore
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+
+.regstore
+]
+P%+=4*16
+O%+=4*16
+[OPTp
+
+
+.mode0tab
+]
+P%+=&800
+O%+=&800
+[OPTp
+.mode0tab_orig
+]
+P%+=&800
+O%+=&800
+[OPTp
+
+.update_palette0
+
+FNADR(0,mode0tab)
+ADD R1,R0,#&800 ; mode0tab_orig
+SUB R6,mem,#-pal_regs
+
+;ADR R5,mode15cols
+LDRB R7,[R6,#0] : AND R7,R7,#%1111 : EOR R7,R7,#%111 : ;LDRB R7,[R5,R7]; COLOUR 0
+LDRB R10,[R6,#8] : AND R10,R10,#%1111 : EOR R10,R10,#%111 : ;LDRB R10,[R5,R10] ; COLOUR 1
+
+MOV R5,#2048:SUB R5,R5,#1
+.update_mode0palette_loop
+
+LDRB R9,[R1,R5]
+TST R9,#%1
+STREQB R7,[R0,R5]
+STRNEB R10,[R0,R5]
+
+SUBS R5,R5,#1
+BGE update_mode0palette_loop
+
+;B draw_general_line0_entry ; exit from update_mode2palette
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+
+;.mode15cols
+;EQUB 0
+;EQUB &15
+;EQUB &62
+;EQUB &77
+;EQUB &88
+;EQUB &9D
+;EQUB &EA
+;EQUB &FF
+
+.updatepixel1
+
+;RJW was here
+ADD R14,R14,R14,LSL#2 ;
+
+ADD R14,R1,R14,LSL#4 ; offset in arc screen of byte
+
+ADR R13,mode1tab
+LDR R0,[R13,R0] ; load 1 byte from table
+
+LDR R13,[mem,#arc_screenstart]
+STRB R0,[R13,R14]
+LDR PC,[mem,#scratch]
+
+.updatescreen1
+ADR R8,mode1tab
+B updatescreen0_entry
+
+.draw_first_line1
+ADR R8,mode1tab
+B draw_first_line0_entry
+
+.draw_general_line1
+ADR R8,mode1tab
+B draw_general_line0_entry
+
+.mode1tab
+]
+P%+=&800
+O%+=&800
+[OPTp
+.mode1tab_orig
+]
+P%+=&800
+O%+=&800
+[OPTp
+
+.update_palette1
+
+
+FNADR(0,mode1tab)
+ADD R1,R0,#&800 ; mode1tab_orig
+SUB R6,mem,#-pal_regs
+
+MOV R5,#2048:SUB R5,R5,#1
+
+.update_mode1palette_loop
+
+;LDRB R9,[R1,R5]
+;AND R4,R9,#%10
+;AND R9,R9,#%01
+;MOV R9,R9,LSL#1
+;ADD R9,R9,R4,LSL#2
+;LDRB R7,[R6,R9]
+;EOR R7,R7,#%01110111
+;STRB R7,[R0,R5]
+
+;SUBS R5,R5,#1
+;BGE update_mode1palette_loop
+LDRB R9,[R1,R5]
+LDRB R7,[R6,R9] ; read palette entry
+AND R7,R7,#%1111
+EOR R9,R7,#%111
+;ADR R9,mode15colsB : ;LDRB R9,[R9,R7] ; convert back to mode 15 colour
+STRB R9,[R0,R5] ; write to mode1tab
+
+SUBS R5,R5,#1
+BGE update_mode1palette_loop
+
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+
+;.mode15colsB
+;EQUB &FF
+;EQUB &EA
+;EQUB &9D
+;EQUB &88
+;EQUB &77
+;EQUB &62
+;EQUB &15
+;EQUB 0
+
+.updatepixel2
+
+; RJW was here
+ADD R14,R14,R14,LSL#2 ; R14 * 5
+
+ADD R14,R1,R14,LSL#4 ; offset in arc screen of byte
+
+ADR R13,mode2tab
+LDR R0,[R13,R0,LSL#2] ; load 4 bytes from table
+
+LDR R13,[mem,#arc_screenstart]
+STR R0,[R13,R14,LSL#2]
+;MOV R0,R0,LSR#8
+;ADD R14,R14,#1
+;STRB R0,[R13,R14]
+LDR PC,[mem,#scratch]
+
+
+;.scratch
+;EQUD 0
+;EQUD 0
+;EQUD 0
+;EQUD 0
+
+
+;.wrap_addr
+;EQUD &4000
+
+.updatescreen2
+ADR R8,mode2tab
+B updatescreen0_entry
+
+.draw_first_line2
+ADR R8,mode2tab
+B draw_first_line0_entry
+
+.draw_general_line2
+ADR R8,mode2tab
+
+B draw_general_line0_entry
+;LDRB R0,[mem,#pal_tamper]
+;CMP R0,#0
+;BEQ draw_general_line0_entry
+;B update_mode2palette
+
+
+.mode2tab
+]
+O%+=&800
+P%+=&800
+[OPTp
+.mode2tab_orig
+]
+O%+=&800
+P%+=&800
+[OPTp
+.update_palette2
+
+
+FNADR(0,mode2tab) : ;SUB R10,R0,#1
+ADD R1,R0,#&800 ; mode2tab_orig
+SUB R6,mem,#-pal_regs
+
+MOV R5,#2048:SUB R5,R5,#4
+
+.update_mode2palette_loop
+
+;LDRB R9,[R1,R5]
+;AND R9,R9,#%1111
+;LDRB R7,[R6,R9]
+;EOR R7,R7,#%01110111
+;STRB R7,[R0,R5]
+;STRB R7,[R10,R5] ; two bytes in mode2tab
+
+LDRB R9,[R1,R5]
+LDRB R7,[R6,R9] ; read palette entry
+AND R7,R7,#%1111
+EOR R7,R7,#%0111 : ADD R7,R7,R7,LSL#8 : ADD R9,R7,R7,LSL#16
+;ADR R9,mode15colsW : ;LDR R9,[R9,R7,LSL#2] ; convert back to mode 15 colour
+STR R9,[R0,R5] ; write to mode2tab
+
+SUBS R5,R5,#4
+BGE update_mode2palette_loop
+
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+
+;.mode15colsW
+;EQUD &FFFFFFFF
+;EQUD &EAEAEAEA
+;EQUD &9D9D9D9D
+;EQUD &88888888
+;EQUD &77777777
+;EQUD &62626262
+;EQUD &15151515
+;EQUD 0
+;EQUD &0F0F0F0F
+;EQUD &0E0E0E0E
+;EQUD &0D0D0D0D
+;EQUD &0C0C0C0C
+;EQUD &0B0B0B0B
+;EQUD &0A0A0A0A
+;EQUD &09090909
+;EQUD &08080808
+;EQUD &07070707
+;EQUD &06060606;
+;EQUD &05050505
+;EQUD &04040404
+;EQUD &03030303
+;EQUD &02020202
+;EQUD &01010101
+;EQUD 0
+
+; RJW was here
+.updatepixel5
+FNADR(13,mode5tab)
+
+LDRB R2,[mem,#crt_regs+3]
+TST R2,#1 << 4
+BEQ updatepixel5_2
+
+; RJW was here
+AND R2,R14,#%11    ; make fortress work
+BIC R14,R14,#%111   ;
+ADD R14,R2,R14,LSR#1
+
+B updatepixel5_2
+
+
+.updatescreen5
+FNADR(8,mode5tab)
+ADD R10,R8,#4
+
+LDRB R0,[mem,#lastmode]
+CMP R0,#5
+BEQ skip_mode5
+SWI &116
+SWI &100+12
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#5 : STRB R0,[mem,#lastmode]
+.skip_mode5
+
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+
+FNshadow
+
+
+LDRB R2,[R6,#1] ; no of horiz chars
+
+MOV R5,#320 : SUBS R5,R5,R2,LSL#3 ; LN2(320/40)
+MOVMI R5,#0
+
+ADD R9,R9,R5,LSR#2
+
+
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+
+ADD R7,R7,R13 ; add arc address of BBC's memory
+ADD R11,R13,#&8000 ; address of end of screen mem
+ADD R12,R12,R13 ; address to wrap to
+
+SUB R12,R11,R12
+
+
+
+MOV R14,R7
+MOV R6,R2
+.loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+LDRB R0,[R7],#8
+
+LDR R1,[R8,R0,LSL#3]
+STR R1,[R9],#4
+
+LDR R1,[R10,R0,LSL#3]
+STR R1,[R9],#4
+
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+ADD R9,R9,R5
+
+
+;LDRB R2,[R6,#1] ; no of horiz chars
+MOV R2,R6 ; no of horiz chars
+SUB R7,R7,R2,LSL#3 : ADD R7,R7,#1
+ADD R14,R14,#1
+
+TST R7,#%111 : BNE loop1 ; have we done a multiple of 8 rows?
+ADD R7,R7,R2,LSL#3 : SUB R7,R7,#8
+ADD R14,R14,R2,LSL#3 : SUB R14,R14,#8
+
+;CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+SUBS R4,R4,R2 ; have we got to bottom?
+BHI loop1
+
+
+
+LDMEA mem,{R4-R11,PC}
+
+.draw_first_line5
+FNADR(8,mode5tab)
+ADD R10,R8,#4
+LDRB R0,[mem,#lastmode]
+CMP R0,#99
+BEQ skip_mode5x
+FNchangemode
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode]
+.skip_mode5x
+
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+
+FNshadow
+
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+
+LDRB R11,[R6,#5] ; vertical adjust
+AND R11,R11,#7
+ADD R11,R11,R11,LSL#2
+
+MOV R0,R11,LSL#6 : MOV R14,#0
+.blank_loop
+STR R14,[R9,R0]
+SUBS R0,R0,#4
+BGE blank_loop
+
+ADD R9,R9,R11,LSL#7 ; R11 * 320*2
+
+MOV R5,#320*2 : SUBS R5,R5,R2,LSL#4 ; LN2(320/40)
+MOVMI R5,#0
+
+ADDGE R9,R9,R5,LSR#1
+
+ADD R5,R5,#640 ; PIXEL DOUBLE
+
+ADD R7,R7,R13 ; add arc address of BBC's memory
+ADD R11,R13,#&8000 ; address of end of screen mem
+ADD R12,R12,R13 ; address to wrap to
+
+SUB R12,R11,R12
+
+MOV R14,R7
+MOV R6,R2
+.loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+LDRB R0,[R7],#8
+
+;LDR R1,[R8,R0,LSL#3] ; MODE 12
+;STR R1,[R9],#4
+
+;LDR R1,[R10,R0,LSL#3]
+;STR R1,[R9],#4
+
+LDR R1,[R8,R0,LSL#4] ; MODE 15
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+
+LDR R1,[R10,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+
+ADD R8,R8,#8
+LDR R1,[R8,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+SUB R8,R8,#8
+
+ADD R10,R10,#8
+LDR R1,[R10,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+SUB R10,R10,#8
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+FNADR(0,regstore)
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+
+
+LDMEA mem,{R4-R11,PC}
+
+.fortress_general_line5
+FNADR(0,regstore)
+LDMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+LDR R0,[mem,#arc_screenstart]:SUBS R2,R9,R0:BMI line5_exit:SUBS R2,R2,#640*512:BPL line5_exit ; check R9 lies within screen
+
+ADD R9,R9,R5
+
+MOV R2,R6 ; no of horiz chars
+LDRB R2,[mem,#crt_regs+1]
+
+SUB R7,R7,R2,LSL#3 : ADD R7,R7,#1
+ADD R14,R14,#1
+
+TST R7,#%11 : BNE fort5_loop1 ; have we done a multiple of 4 rows?
+ADD R7,R7,R2,LSL#3 : SUB R7,R7,#4
+ADD R14,R14,R2,LSL#3 : SUB R14,R14,#4
+
+;CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+SUBS R4,R4,R2 ; have we got to bottom?
+BLS line5_exit
+;BHI line0_loop1
+
+
+
+.fort5_loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+LDRB R0,[R7],#8
+
+;LDR R1,[R8,R0,LSL#3] ; mode 12
+;STR R1,[R9],#4
+
+;LDR R1,[R10,R0,LSL#3]
+;STR R1,[R9],#4
+
+LDR R1,[R8,R0,LSL#4] ; MODE 15
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+
+LDR R1,[R10,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+
+ADD R8,R8,#8
+LDR R1,[R8,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+SUB R8,R8,#8
+
+ADD R10,R10,#8
+LDR R1,[R10,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+SUB R10,R10,#8
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+FNADR(0,regstore)
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#1
+LDMEA mem,{R4-R11,PC}
+
+
+.draw_general_line5
+ADR R8,mode5tab
+ADD R10,R8,#4
+
+LDRB R0,[mem,#crt_regs+3] ; Fortress
+TST R0,#1 << 4
+BNE fortress_general_line5
+
+FNADR(0,regstore)
+LDMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+LDR R0,[mem,#arc_screenstart]:SUBS R2,R9,R0:BMI line5_exit:SUBS R2,R2,#640*512:BPL line5_exit ; check R9 lies within screen
+
+ADD R9,R9,R5
+
+MOV R2,R6 ; no of horiz chars
+LDRB R2,[mem,#crt_regs+1]
+
+SUB R7,R7,R2,LSL#3 : ADD R7,R7,#1
+ADD R14,R14,#1
+
+TST R7,#%111 : BNE line5_loop1 ; have we done a multiple of 8 rows?
+ADD R7,R7,R2,LSL#3 : SUB R7,R7,#8
+ADD R14,R14,R2,LSL#3 : SUB R14,R14,#8
+
+;CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+SUBS R4,R4,R2 ; have we got to bottom?
+BLS line5_exit
+;BHI line0_loop1
+
+
+
+.line5_loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+LDRB R0,[R7],#8
+
+;LDR R1,[R8,R0,LSL#3] ; MODE 12
+;STR R1,[R9],#4
+
+;LDR R1,[R10,R0,LSL#3]
+;STR R1,[R9],#4
+
+LDR R1,[R8,R0,LSL#4] ; MODE 15
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+
+LDR R1,[R10,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+
+ADD R8,R8,#8
+LDR R1,[R8,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+SUB R8,R8,#8
+
+ADD R10,R10,#8
+LDR R1,[R10,R0,LSL#4]
+STR R1,[R9,#640] ; PIXEL DOUBLE
+STR R1,[R9],#4
+SUB R10,R10,#8
+
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+FNADR(0,regstore)
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#1
+LDMEA mem,{R4-R11,PC}
+
+.line5_exit
+FNADR(0,regstore)
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+
+
+.mode5tab
+]
+P%+=1024*4
+O%+=1024*4
+[OPTp
+.mode5tab_orig
+]
+P%+=1024*4
+O%+=1024*4
+[OPTp
+
+.update_palette5
+
+
+FNADR(1,mode5tab_orig)
+SUB R0,R1,#1024*4 : SUB R10,R0,#1 ; mode5tab
+SUB R6,mem,#-pal_regs
+
+MOV R5,#1024*4:SUB R5,R5,#1
+
+.update_mode5palette_loop
+
+;LDRB R9,[R1,R5]
+;AND R4,R9,#%10
+;AND R9,R9,#%01
+;MOV R9,R9,LSL#1
+;ADD R9,R9,R4,LSL#2
+;LDRB R7,[R6,R9]
+;EOR R7,R7,#%01110111
+;STRB R7,[R0,R5]
+;STRB R7,[R10,R5]
+LDRB R9,[R1,R5]
+LDRB R7,[R6,R9] ; read palette entry
+AND R7,R7,#%1111
+EOR R9,R7,#%111
+;ADR R9,mode15cols5 : ;LDRB R9,[R9,R7] ; convert back to mode 15 colour
+STRB R9,[R0,R5] ; write to mode5tab
+
+
+SUBS R5,R5,#1
+BGE update_mode5palette_loop
+
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+;.mode15cols5
+;EQUB &FF
+;EQUB &EA
+;EQUB &9D
+;EQUB &88
+;EQUB &77
+;EQUB &62;
+;EQUB &15
+;EQUB 0
+
+
+
+.updatescreen4
+FNADR(8,mode4tab)
+.updatescreen4_2
+
+LDRB R0,[mem,#lastmode]
+CMP R0,#4
+BEQ skip_mode4
+SWI &116
+SWI &100+12
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#4 : STRB R0,[mem,#lastmode]
+.skip_mode4
+
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+
+FNshadow
+
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+
+MOV R5,#320 : SUBS R5,R5,R2,LSL#3 ; LN2(320/40)
+MOVMI R5,#0
+
+ADD R9,R9,R5,LSR#2
+
+ADD R7,R7,R13 ; add arc address of BBC's memory
+ADD R11,R13,#&8000 ; address of end of screen mem
+ADD R12,R12,R13 ; address to wrap to
+
+SUB R12,R11,R12
+
+MOV R14,R7
+MOV R6,R2
+.loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+LDRB R0,[R7],#8
+
+MOV R1,R0,LSR#4
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9],#4
+
+AND R1,R0,#%1111
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9],#4
+
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+;LDRB R2,[R6,#1] ; no of horiz chars
+MOV R2,R6 ; no of horiz chars
+SUB R7,R7,R2,LSL#3 : ADD R7,R7,#1
+ADD R14,R14,#1
+
+TST R7,#%111 : BNE loop1 ; have we done a multiple of 8 rows?
+ADD R7,R7,R2,LSL#3 : SUB R7,R7,#8
+ADD R14,R14,R2,LSL#3 : SUB R14,R14,#8
+
+;CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+SUBS R4,R4,R2 ; have we got to bottom?
+BHI loop1
+
+
+
+LDMEA mem,{R4-R11,PC}
+
+
+.draw_first_line4
+FNADR(8,mode4tab)
+LDRB R0,[mem,#lastmode]
+CMP R0,#99
+BEQ skip_mode4x
+FNchangemode
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode]
+.skip_mode4x
+
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+
+FNshadow
+
+LDRB R2,[R6,#1] ; no of horiz chars
+
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+
+LDRB R11,[R6,#5] ; vertical adjust
+AND R11,R11,#7
+ADD R11,R11,R11,LSL#2
+
+MOV R0,R11,LSL#6 : MOV R14,#0
+.blank_loop
+STR R14,[R9,R0]
+SUBS R0,R0,#4
+BGE blank_loop
+
+ADD R9,R9,R11,LSL#7 ; R11 * 320
+
+MOV R5,#320*2 : SUBS R5,R5,R2,LSL#4 ; LN2(320/40)
+MOVMI R5,#0
+
+
+ADD R9,R9,R5,LSR#1
+
+ADD R5,R5,#640 ; PIXEL DOUBLE
+
+ADD R7,R7,R13 ; add arc address of BBC's memory
+ADD R11,R13,#&8000 ; address of end of screen mem
+ADD R12,R12,R13 ; address to wrap to
+
+SUB R12,R11,R12
+
+MOV R14,R7
+MOV R6,R2
+.loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+LDRB R0,[R7],#8
+
+;MOV R1,R0,LSR#4 ; MODE 12
+;LDR R1,[R8,R1,LSL#2]
+;STR R1,[R9],#4
+
+;AND R1,R0,#%1111
+;LDR R1,[R8,R1,LSL#2]
+;STR R1,[R9],#4
+
+MOV R1,R0,LSR#6 ; MODE 15
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9,#640]
+STR R1,[R9],#4
+
+MOV R1,R0,LSR#4 : AND R1,R1,#%11
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9,#640]
+STR R1,[R9],#4
+
+MOV R1,R0,LSR#2 : AND R1,R1,#%11
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9,#640]
+STR R1,[R9],#4
+
+AND R1,R0,#%11
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9,#640]
+STR R1,[R9],#4
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+FNADR(0,regstore)
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+
+
+LDMEA mem,{R4-R11,PC}
+
+.draw_general_line4
+ADR R8,mode4tab
+
+
+FNADR(0,regstore)
+LDMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+LDR R0,[mem,#arc_screenstart]:SUBS R2,R9,R0:BMI line4_exit:SUBS R2,R2,#640*512:BPL line4_exit ; check R9 lies within screen
+
+ADD R9,R9,R5
+
+MOV R2,R6 ; no of horiz chars
+LDRB R2,[mem,#crt_regs+1]
+
+SUB R7,R7,R2,LSL#3 : ADD R7,R7,#1
+ADD R14,R14,#1
+
+TST R7,#%111 : BNE line4_loop1 ; have we done a multiple of 8 rows?
+ADD R7,R7,R2,LSL#3 : SUB R7,R7,#8
+ADD R14,R14,R2,LSL#3 : SUB R14,R14,#8
+
+;CMP R7,R11 : ;SUBGE R7,R7,R12 ; screen wrap
+
+SUBS R4,R4,R2 ; have we got to bottom?
+BLS line4_exit
+;BHI line0_loop1
+
+
+
+.line4_loop1
+MOV R7,R14
+.loop2
+CMP R7,R11 : SUBGE R7,R7,R12 ; screen wrap
+
+LDRB R0,[R7],#8
+
+;MOV R1,R0,LSR#4 ; MODE 12
+;LDR R1,[R8,R1,LSL#2]
+;STR R1,[R9],#4
+
+;AND R1,R0,#%1111
+;LDR R1,[R8,R1,LSL#2]
+;STR R1,[R9],#4
+
+MOV R1,R0,LSR#6 ; MODE 15
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9,#640]
+STR R1,[R9],#4
+
+MOV R1,R0,LSR#4 : AND R1,R1,#%11
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9,#640]
+STR R1,[R9],#4
+
+MOV R1,R0,LSR#2 : AND R1,R1,#%11
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9,#640]
+STR R1,[R9],#4
+
+AND R1,R0,#%11
+LDR R1,[R8,R1,LSL#2]
+STR R1,[R9,#640]
+STR R1,[R9],#4
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop2
+
+FNADR(0,regstore)
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#1
+LDMEA mem,{R4-R11,PC}
+
+.line4_exit
+FNADR(0,regstore)
+STMIA R0,{R2,R4-R7,R9,R11-R12,R14}
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+
+
+; RJW was here
+.updatepixel4
+
+ADR R13,mode4tab
+
+.updatepixel5_2
+
+
+ADD R14,R14,R14,LSL#2 ; R14 * 5
+
+ADD R14,R1,R14,LSL#3 ; offset in arc screen of byte/4
+
+LDR R0,[R13,R0,LSL#2] ; load 4 bytes from table
+
+LDR R13,[mem,#arc_screenstart]
+STR R0,[R13,R14,LSL#2]
+LDR PC,[mem,#scratch]
+
+.mode4tab
+EQUD &00000000
+EQUD &FFFF0000
+EQUD &0000FFFF
+EQUD &FFFFFFFF
+.mode4tab_orig
+EQUD &00000000
+EQUD &FFFF0000
+EQUD &0000FFFF
+EQUD &FFFFFFFF
+
+.update_palette4
+
+ADR R0,mode4tab
+ADD R1,R0,#16 ; mode4tab_orig
+SUB R6,mem,#-pal_regs
+
+MOV R5,#15
+
+;ADR R10,mode15cols4
+
+.update_mode4palette_loop
+
+LDRB R9,[R1,R5]
+TST R9,#%1
+LDREQB R7,[R6,#0]
+LDRNEB R7,[R6,#8]
+AND R7,R7,#%1111
+EOR R7,R7,#%111
+;LDRB R7,[R10,R7]
+STRB R7,[R0,R5]
+
+SUBS R5,R5,#1
+BGE update_mode4palette_loop
+
+;B draw_general_line0_entry ; exit from update_mode2palette
+MOV R0,#0
+LDMEA mem,{R4-R11,PC}
+
+;.mode15cols4
+;EQUB &FF
+;EQUB &EA
+;EQUB &9D
+;EQUB &88
+;EQUB &77
+;EQUB &62
+;EQUB &15
+;EQUB 0
+
+.pointer_on
+\LDRB R0,[mem,#cursor_on]
+\CMP R0,#0 : \MOVNE PC,R14
+TST F,#1 << 10 ; cursor on?
+MOVEQ PC,R14
+MOV R0,#106:MOV R1,#&82
+SWI "OS_Byte"
+;MOV R0,#1
+;STRB R0,[mem,#cursor_tamper]
+MOV PC,R14
+
+.updatescreen7_selfcontained
+
+STMFD mem,{R4-R11,R14}
+
+LDR R9,[mem,#arc_screenstart]
+
+SUB R6,mem,#-crt_regs
+MOV R12,F,LSR#16
+
+.updatescreen7
+LDRB R0,[mem,#lastmode]
+CMP R0,#7
+BEQ not_newmode7
+ADR R0,mode7copy
+MOV R1,#1020
+MOV R2,#0
+.cls7
+STR R2,[R0,R1]
+SUBS R1,R1,#4
+BPL cls7
+
+SWI &116
+SWI &107 ; MODE 7
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#7 : STRB R0,[mem,#lastmode]
+.not_newmode7
+SWI &11E ; PRINTTAB(0,0)
+
+;LDR R5,crt_regs_addr
+MOV R5,R6
+LDRB R6,[R5,#12]
+AND R6,R6,#&3F
+EOR R6,R6,#&20
+ADD R6,R6,#&74
+AND R6,R6,#&FF
+LDRB R7,[R5,#13]
+ADD R7,R7,R6,LSL#8
+
+FNshadow
+
+;MOV R7,#&7C00
+
+;ADD mem,mem,#&7C00
+MOV R4,#0
+;SUB R4,R4,#1
+;ADD mem,mem,#1
+
+ADR R8,mode7copy:;SUB R8,R8,#&7C00
+
+MOV R9,#0 ; X
+MOV R10,#0 ; Y
+SUB R9,R9,#1
+
+.mode7loop
+ADD R9,R9,#1 : CMP R9,#40 : MOVEQ R9,#0 : ADDEQ R10,R10,#1
+LDRB R0,[R13,R7]
+CMP R0,#&7F : MOVEQ R0,#255
+CMP R0,#&1A : MOVEQ R0,#&9A ; fix Zalaga???
+CMP R0,#&1D : MOVEQ R0,#&9D ; fix Zalaga???
+CMP R0,#32 : MOVLT R0,#32
+
+CMP R0,#&60 : MOVEQ R0,#&5F : BEQ print7
+CMP R0,#&5F : MOVEQ R0,#&23 : BEQ print7
+CMP R0,#&23 : MOVEQ R0,#&60
+.print7
+
+LDRB R11,[R8] ; mode7copy
+CMP R11,R0
+BEQ noprint7
+SWI &100+31 ; PRINTTAB(
+MOV R11,R0
+MOV R0,R9 : SWI "OS_WriteC"
+MOV R0,R10 : SWI "OS_WriteC"
+MOV R0,R11 : SWI "OS_WriteC"
+STRB R0,[R8] ; mode7copy
+.noprint7
+ADD R8,R8,#1
+
+ADD R7,R7,#1
+CMP R7,#&8000
+MOVEQ R7,#&7C00
+ADD R4,R4,#1
+CMP R4,#25*40
+BNE mode7loop
+
+LDMEA mem,{R4-R11,PC}
+.mode7copy
+]
+P%+=1024:O%+=1024
+[OPTp
+
+.draw_general_line
+
+STMFD mem,{R4-R11,R14}
+
+
+]
+IF electron% THEN
+[OPTp
+TST F,#1 << 12
+MOVNE PC,R14 ; "mode 7"
+]
+ENDIF
+
+REMIF electron% THEN
+[OPTp
+LDRB R0,[mem,#fe20]
+;]
+;ELSE
+;[OPTp
+;SUB R0,mem,#512 ; sheila
+;LDRB R0,[R0,#&20]
+;]
+;ENDIF
+
+;[OPTp
+;RJW Updated code to avoid jump->jumps
+MOVS R0,R0,LSR#2
+;BCS updatescreen7
+
+AND R0,R0,#7
+LDR R0,[PC,R0,LSL#2]
+ADD PC,PC,R0
+EQUD draw_general_line4-ustab3   ; %000 00
+.ustab3
+EQUD draw_general_line5-ustab3   ; %001 00
+EQUD draw_general_line4-ustab3   ; %010 00
+EQUD draw_general_line0-ustab3   ; %011 00
+EQUD draw_general_line1-ustab3   ; %100 00
+EQUD draw_general_line2-ustab3   ; %101 00
+EQUD draw_general_line1-ustab3   ; %110 00
+EQUD draw_general_line0-ustab3   ; %111 00
+
+.update_palette
+STMFD mem,{R4-R11,R14}
+
+
+LDRB R0,[mem,#fe20]
+MOVS R0,R0,LSR#2
+AND R0,R0,#7
+LDR R0,[PC,R0,LSL#2]
+;LDMEA mem,{R0,R4-R11,PC}
+ADD PC,PC,R0
+EQUD update_palette4-ustab4   ; %000 00
+.ustab4
+EQUD update_palette5-ustab4   ; %001 00
+EQUD update_palette4-ustab4   ; %010 00
+EQUD update_palette0-ustab4   ; %011 00
+EQUD update_palette1-ustab4   ; %100 00
+EQUD update_palette2-ustab4   ; %101 00
+EQUD update_palette1-ustab4   ; %110 00
+EQUD update_palette0-ustab4   ; %111 00
+
+
+.draw_first_line
+
+STMFD mem,{R4-R11,R14}
+
+]
+IF electron% THEN
+[OPTp
+TST F,#1 << 12
+MOVNE PC,R14 ; "mode 7"
+]
+ENDIF
+
+[OPTp
+LDR R9,[mem,#arc_screenstart]
+
+SUB R6,mem,#-crt_regs
+MOV R12,F,LSR#16
+
+]
+IF electron% THEN
+[OPTp
+LDRB R0,[mem,#fe20]
+]
+ELSE
+[OPTp
+SUB R0,mem,#512 ; sheila
+LDRB R0,[R0,#&20]
+]
+ENDIF
+
+[OPTp
+;RJW Updated code to avoid jump->jumps
+MOVS R0,R0,LSR#2
+BCS updatescreen7
+
+AND R0,R0,#7
+LDR R0,[PC,R0,LSL#2]
+ADD PC,PC,R0
+EQUD draw_first_line4-ustab2   ; %000 00
+.ustab2
+EQUD draw_first_line5-ustab2   ; %001 00
+EQUD draw_first_line4-ustab2   ; %010 00
+EQUD draw_first_line0-ustab2   ; %011 00
+EQUD draw_first_line1-ustab2   ; %100 00
+EQUD draw_first_line2-ustab2   ; %101 00
+EQUD draw_first_line1-ustab2   ; %110 00
+EQUD draw_first_line0-ustab2   ; %111 00
+
+
+  EQUD 0 ; MUST BE JUST BEFORE mode_selector_block
+  EQUD 0
+  .mode_selector_block
+  EQUD 1
+  EQUD 640 ;xres
+  EQUD 512 ;yres
+  EQUD 3        ; 8 bpp
+  EQUD -1
+  EQUD 0        ; Modeflags = 128
+  EQUD 128
+  EQUD 3        ; NColour = 255
+  EQUD 255
+  EQUD -1
+.palette_colours
+EQUD &00000000
+EQUD &0000FF00
+EQUD &00FF0000
+EQUD &00FFFF00
+EQUD &FF000000
+EQUD &FF00FF00
+EQUD &FFFF0000
+EQUD &FFFFFF00
+]
+FORI%=0 TO 255-8
+[OPTp:EQUD (&FFFFFF)<<8:]
+NEXT
+[OPTp
+
+.updatescreen
+STMFD mem,{R4-R11,R14}
+
+]
+IF electron% THEN
+[OPTp
+TST F,#1 << 12
+MOVNE PC,R14 ; "mode 7"
+]
+ENDIF
+
+[OPTp
+LDR R9,[mem,#arc_screenstart]
+
+SUB R6,mem,#-crt_regs
+;LDRB R10,[R6,#19]
+;ANDS R10,R10,#%11
+;MOVNE R12,#&5800
+;MOVEQ R12,#&4000
+;CMP R10,#%10
+;MOVEQ R12,#&3000
+;CMP R10,#%01
+;MOVEQ R12,#&6000
+MOV R12,F,LSR#16
+
+]
+IF electron% THEN
+[OPTp
+LDRB R0,[mem,#fe20]
+]
+ELSE
+[OPTp
+SUB R0,mem,#512 ; sheila
+LDRB R0,[R0,#&20]
+]
+ENDIF
+
+[OPTp
+;RJW Updated code to avoid jump->jumps
+MOVS R0,R0,LSR#2
+BCS updatescreen7
+
+TST F,#1 << 8 ; patch on?
+BNE patch_screen2 ; patch_screen2 ; F=R7
+
+;RJW; Can this AND be removed?
+.patch_exit
+AND R0,R0,#7
+LDR R0,[PC,R0,LSL#2]
+ADD PC,PC,R0
+EQUD updatescreen4-ustab   ; %000 00
+.ustab
+EQUD updatescreen5-ustab   ; %001 00
+EQUD updatescreen4-ustab   ; %010 00
+EQUD updatescreen0-ustab   ; %011 00
+EQUD updatescreen1-ustab   ; %100 00
+EQUD updatescreen2-ustab   ; %101 00
+EQUD updatescreen1-ustab   ; %110 00
+EQUD updatescreen0-ustab   ; %111 00
+
+.patch_screen2
+ADR R13,patch_exit
+B patch_screen
+]
+=""
+
+DEFFNpointer_on
+IF NOTelectron% THEN [OPTp:BL pointer_on:]
+=""
+
+DEFFNchangemode
+[OPTp
+;SWI &116
+;SWI &100+15 ; MODE 15
+;]
+;=""
+
+MOV R0, #0
+FNADR(1, mode_selector_block)
+SWI "OS_ScreenMode"
+
+
+; cols 0-7
+SWI &100+19 : SWI &100+0  : SWI &100+16 : SWI &100+0   : SWI &100+0   : SWI &100+0   ; black
+SWI &100+19 : SWI &100+1  : SWI &100+16 : SWI &100+255 : SWI &100+0   : SWI &100+0   ; red
+SWI &100+19 : SWI &100+2  : SWI &100+16 : SWI &100+0   : SWI &100+255 : SWI &100+0   ; green
+SWI &100+19 : SWI &100+3  : SWI &100+16 : SWI &100+255 : SWI &100+255 : SWI &100+0   ; yellow
+SWI &100+19 : SWI &100+4  : SWI &100+16 : SWI &100+0   : SWI &100+0   : SWI &100+255 ; blue
+SWI &100+19 : SWI &100+5  : SWI &100+16 : SWI &100+255 : SWI &100+0   : SWI &100+255 ; magenta
+SWI &100+19 : SWI &100+6  : SWI &100+16 : SWI &100+0   : SWI &100+255 : SWI &100+255 ; cyan
+SWI &100+19 : SWI &100+7  : SWI &100+16 : SWI &100+255 : SWI &100+255 : SWI &100+255 ; white
+
+;flashing cols 8-15
+SWI &100+19 : SWI &100+15  : SWI &100+18 : SWI &100+0   : SWI &100+0   : SWI &100+0   ; black
+SWI &100+19 : SWI &100+15  : SWI &100+17 : SWI &100+255 : SWI &100+255 : SWI &100+255 ; white
+SWI &100+19 : SWI &100+14  : SWI &100+18 : SWI &100+255 : SWI &100+0   : SWI &100+0   ; red
+SWI &100+19 : SWI &100+14  : SWI &100+17 : SWI &100+0   : SWI &100+255 : SWI &100+255 ; cyan
+SWI &100+19 : SWI &100+13 : SWI &100+18 : SWI &100+0   : SWI &100+255 : SWI &100+0   ; green
+SWI &100+19 : SWI &100+13 : SWI &100+17 : SWI &100+255 : SWI &100+0   : SWI &100+255 ; magenta
+SWI &100+19 : SWI &100+12 : SWI &100+18 : SWI &100+255 : SWI &100+255 : SWI &100+0   ; yellow
+SWI &100+19 : SWI &100+12 : SWI &100+17 : SWI &100+0   : SWI &100+0   : SWI &100+255 ; blue
+SWI &100+19 : SWI &100+11 : SWI &100+18 : SWI &100+0   : SWI &100+0   : SWI &100+255 ; blue
+SWI &100+19 : SWI &100+11 : SWI &100+17 : SWI &100+255 : SWI &100+255 : SWI &100+0   ; yellow
+SWI &100+19 : SWI &100+10 : SWI &100+18 : SWI &100+255 : SWI &100+0   : SWI &100+255 ; magenta
+SWI &100+19 : SWI &100+10 : SWI &100+17 : SWI &100+0   : SWI &100+255 : SWI &100+0   ; green
+SWI &100+19 : SWI &100+9 : SWI &100+18 : SWI &100+0   : SWI &100+255 : SWI &100+255 ; cyan
+SWI &100+19 : SWI &100+9 : SWI &100+17 : SWI &100+255 : SWI &100+0   : SWI &100+0   ; red
+SWI &100+19 : SWI &100+8 : SWI &100+18 : SWI &100+255 : SWI &100+255 : SWI &100+255 ; white
+SWI &100+19 : SWI &100+8 : SWI &100+17 : SWI &100+0   : SWI &100+0   : SWI &100+0   ; black
+]
+=""
+
+FNADR(1, mode_selector_block)
+STR R2,[R1,#-8]
+STR R3,[R1,#-4]
+
+MVN R0,#0
+MVN R1,#0
+FNADR(2,palette_colours)
+
+MOV R3,#0; 1024
+;SWI "ColourTrans_WritePalette"
+
+FNADR(1, mode_selector_block)
+LDR R2,[R1,#-8]
+LDR R3,[R1,#-4]
+;SWI &116
+;SWI&100+15 ; MODE 15
+]
+=""
+DEF FNADR(s%,x%)
+REM The instruction sequence must be of FIXED length
+a%=x%-P%-8
+IF a%>=0 THEN
+ [OPTp:ADD s%,PC,#(a% AND &000003FF):ADD s%,s%,#(a% AND &FFFFFC00):]
+ELSE
+ a%=-a%
+ [OPTp:SUB s%,PC,#(a% AND &000003FF):SUB s%,s%,#(a% AND &FFFFFC00):]
+ENDIF
+=""
+

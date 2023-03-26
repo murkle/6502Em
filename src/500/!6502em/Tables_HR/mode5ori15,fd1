@@ -1,0 +1,33 @@
+REM > mode5ori15
+DIM mode5tab 10000
+DIM col%(3)
+FORI%=0 TO 3
+REMREAD col%(I%)
+col%(I%)=((I% AND 1)<<1) + ((I% AND 2)<<2)
+col%(I%)+=col%(I%)<<8
+col%(I%)+=col%(I%)<<16
+NEXT
+FORI%=0 TO 255
+C%=(I% AND 2^4)>>3
+C%+=(I% AND 2^0)
+mode5tab!(4*I%*4+12)=col%(C%)
+NEXT
+FORI%=0 TO 255
+C%=(I% AND 2^5)>>4
+C%+=(I% AND 2^1)>>1
+mode5tab!(4*I%*4+8)=col%(C%)
+NEXT
+FORI%=0 TO 255
+C%=(I% AND 2^6)>>5
+C%+=(I% AND 2^2)>>2
+mode5tab!(4*I%*4+4)=col%(C%)
+NEXT
+FORI%=0 TO 255
+C%=(I% AND 2^7)>>6
+C%+=(I% AND 2^3)>>3
+mode5tab!(4*I%*4+0)=col%(C%)
+NEXT
+OSCLI"SAVE <6502Em$DIR>.Tables.MODE5ORIG "+STR$~mode5tab+" +1000"
+
+REMDATA 0,&15,&62,&77,&88,&9D,&EA,&FF
+DATA 0,&15,&77,&FF

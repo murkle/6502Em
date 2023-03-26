@@ -1,0 +1,26 @@
+REM > mode0gen15
+DIM mode0tab 10000
+DIM col%(1)
+FORI%=0 TO 1
+READ col%(I%)
+NEXT
+FORI%=0 TO 255
+C%=(I% AND 2^0)
+D%=(I% AND 2^1)>>1
+E%=(I% AND 2^2)>>2
+F%=(I% AND 2^3)>>3
+mode0tab!(2*I%*4+4)=col%(F%)+(col%(E%)<<8)+(col%(D%)<<16)+(col%(C%)<<24)
+NEXT
+FORI%=0 TO 255
+C%=(I% AND 2^4)>>4
+D%=(I% AND 2^5)>>5
+E%=(I% AND 2^6)>>6
+F%=(I% AND 2^7)>>7
+mode0tab!(2*I%*4)=col%(F%)+(col%(E%)<<8)+(col%(D%)<<16)+(col%(C%)<<24)
+NEXT
+OSCLI"SAVE <6502Em$DIR>.Tables.MODE0TAB "+STR$~mode0tab+" +800"
+
+REMDATA 0,&15,&62,&77,&88,&9D,&EA,&FF
+REMDATA 0,&15,&77,&FF
+REMDATA 0,&FF
+DATA 0,1

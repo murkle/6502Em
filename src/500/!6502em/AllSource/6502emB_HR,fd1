@@ -1,0 +1,4052 @@
+REM 32bit change comments tracked by SH
+REM this is the BBC B / HR fork of the code
+REM
+REM > 6502Em
+REMINPUT"Hardware scroll ";HWScroll
+REMIF HWScroll<>0 THEN HWScroll=TRUE
+HWScroll=FALSE
+master=FALSE
+*RMENSURE 6502Support 0.00 RMRun <6502Em$Res>.65Support
+ON ERROR PROCerror
+
+REM V2. (bbc)
+
+pagetable=&97000
+
+tube=FALSE
+IO_Podule%=FALSE
+
+DIM opcode(&100), bcd(&100), code 500*1024, buffer 1000
+DIM l%(100)
+DIM divloop1(10),divloop2(10),divjump(10)
+div%=0
+LIBRARY "<6502Em$Dir>.AllSource.Sound6sh"
+LIBRARY "<6502Em$Dir>.AllSource.OpExact"
+LIBRARY "<6502Em$Dir>.AllSource.Screen2"
+IF HWScroll THEN LIBRARY "<6502Em$Dir>.Src32.HWScroll"
+
+electron%=FALSE
+master=FALSE
+PROCassemble
+
+PRINT(end-start)/1024
+OSCLI "Save <6502Em$Dir>.Code_HR "+STR$~code+" "+STR$~(end+code)
+OSCLI "SetType <6502Em$Dir>.Code_HR Data"
+
+END
+master=TRUE
+PROCassemble
+PRINT(end-start)/1024
+OSCLI "Save <6502Em$Dir>.CodeM32 "+STR$~code+" "+STR$~(end+code)
+OSCLI "SetType <6502Em$Dir>.CodeM32 Data"
+
+END
+
+OSCLI"LOAD <6502Em$Dir>.OS1,2 "+STR$~(memory+&C000)
+OSCLI"LOAD <6502Em$Dir>.BASICII "+STR$~(memory+&8000)
+
+MODE 12
+CALL init+code
+PRINT"BOO"
+
+!pc_store=&D9CD << 16
+
+D%=memory : REM R3
+CALL start+code
+
+END
+DEFPROCassemble
+PROCclearmem(code,code+200*1024)
+R=1000 : S=1000 : T=1000
+
+A=4
+X=5
+Y=6
+F=7
+zSP=8
+mem=3
+time=9
+zpc=10
+table=11
+
+a=-&100+0
+x=-&100+4
+y=-&100+8
+f=-&100+12
+sp=-&100+16
+pc_store=-&100+20
+T1mode=-&100+24
+T2mode=-&100+25
+T3mode=-&100+26
+T4mode=-&100+27
+T1=-&100+28
+T1R=-&100+32
+T2=-&100+36
+T2R=-&100+40
+T3=-&100+44
+T3R=-&100+48
+T4=-&100+52
+T4R=-&100+56
+screen=-&100+60
+screenR=-&100+64
+min=-&100+68
+sound_timer=-&100+72
+ifr=-&100+76
+ier=-&100+77
+ifr2=-&100+78
+ier2=-&100+79
+arc_screenstart=-&100+80
+tamper=-&100+84
+cursor_tamper=-&100+88
+ROMSEL_ON=-&100+92
+rom=-&100+96
+ROMRAM=-&100+100
+fe20=-&100+116
+tape_handle=-&100+117
+crt_regs=-&100+120
+scratch=-&100+140
+pal_regs=-&100+148
+screen_line=-&100+164
+screen_timingcount=-&100+168
+ACCCON=-&100+172
+patch_on=-&100+176
+vsync_fps_copy=-&100+177
+lastmode=-&100+178
+fe10=-&100+179
+tape_count=-&100+180
+key_addr=-&100+184
+scanlines_to_draw=-&100+188
+vsync_fps=-&100+189
+firstline=-&100+190
+vsync_fps_reset=-&100+191
+vsync_timer=-&100+192
+speedR=-&100+196
+
+enD=-&100+200 : REM don't go past this
+
+FORp=4 TO 6 STEP 2
+div%=0
+O%=code
+l%=0
+P%=0
+opcode%=0
+[OPTp
+.Oa                            EQUD 0
+.Ox                            EQUD 0
+.Oy                            EQUD 0
+.Of                            EQUD 0
+.Osp                           EQUD 0
+.Opc_store                     EQUD 0
+.start_offset                 EQUD start
+.trace                        EQUD 0
+.trace2                       EQUD 0
+.init_addr                    EQUD init
+.crt_addr                     EQUD 0 ; was crt_regs
+.T1_addr                      EQUD 0 ; was T1
+.ifr_addr                     EQUD 0 ; ifr
+.column_counter_addr          EQUD column_counter
+.ROMSEL_addr                  EQUD 0 ; ROMSEL
+.Palette_addr                 EQUD 0 ; Palette
+.speed_addr                   EQUD screen_count+4
+.elite_addr                   EQUD 0 ; elite
+.opco_addr                    EQUD opcode(0) ; opcodetable
+.bcd_addr                     EQUD bcd(0)
+.sheila_writetab_addr         EQUD sheila_writetab
+.sheila_readtab_addr          EQUD sheila_readtab
+.sound_vectors_addr           EQUD sound_buffs_addr
+.patch_addr                   EQUD patch_screen
+
+.init ; only called once, before code called
+ADR R0,0
+;LDR R1,opco_addr
+;ADD R1,R1,R0
+;LDR R2,bcd_addr
+;ADD R2,R2,R0
+LDR R5,sheila_writetab_addr
+ADD R5,R5,R0
+LDR R6,sheila_readtab_addr
+ADD R6,R6,R0
+MOV R3,#255
+.init_loop
+;LDR R4,[R1,R3,LSL#2]
+;ADD R4,R4,R0
+;STR R4,[R1,R3,LSL#2]
+;LDR R4,[R2,R3,LSL#2]
+;ADD R4,R4,R0
+;STR R4,[R2,R3,LSL#2]
+LDR R4,[R5,R3,LSL#2]
+ADD R4,R4,R0
+STR R4,[R5,R3,LSL#2]
+LDR R4,[R6,R3,LSL#2]
+ADD R4,R4,R0
+STR R4,[R6,R3,LSL#2]
+SUBS R3,R3,#1
+
+BPL init_loop
+MOV PC,R14
+
+.start
+STMFD R13!,{R1-R12,R14}
+STR R13,return_addr
+STR R0,roms_addr
+;LDR R0,crt_addr
+;ADR R1,0
+;ADD R0,R0,R1
+;SWI "6502_Init"
+
+MOV R0,#&9C00 : ADD R0,R0,#&40
+STR R0,[mem,#screenR]
+
+SWI "6502_Getkeyaddr"
+STR R0,[mem,#key_addr]
+
+ADR R0,block1
+ADD R1,R0,#8
+SWI "OS_ReadVduVariables"
+LDR R9,[R1]     ; screenstart
+STR R9,[mem,#arc_screenstart]
+MOV R9,#1
+STRB R9,[mem,#tamper]
+STRB R9,[mem,#cursor_tamper]
+
+LDR time,[mem,#min]
+LDR A,[mem,#a]
+LDR X,[mem,#x]
+LDR Y,[mem,#y]
+LDR zSP,[mem,#sp] : ORR zSP,zSP,#1
+LDR F,[mem,#f]
+LDR zpc,[mem,#pc_store]
+
+BL recalc_wrap
+
+LDRB R0,[mem,#patch_on]
+AND R0,R0,#%11111
+BIC F,F,#&FF00
+ORR F,F,R0,LSL#8 ; NB not just patch stuff (ie don't remove)
+
+;MOV time,#0
+TST F,#1 << 10 ; cursor on?
+BLNE force_cursor
+
+BL set_FE08
+
+ADR R0,0
+TST F,#%1000
+LDREQ table,opco_addr
+LDRNE table,bcd_addr
+ADD table,table,R0
+;SWI "6502_ReInit"
+;SWI "6502_UpdateScreen
+BL poke_updatepixelV
+;BL updatescreen
+B fetch2
+
+.reset_bcdflag
+ADR R1,0
+TST F,#%1000
+LDREQ table,opco_addr
+LDRNE table,bcd_addr
+ADD table,table,R1
+MOV PC,R14
+
+.block1
+EQUD 149 : EQUD -1
+.block2
+EQUD 0 : EQUD 0
+
+.screen_count
+EQUD 0
+EQUD 0
+
+.reg_comp
+EQUD &FFEE << 16
+
+.trace_on
+MOV R12,#1
+STRB R12,trace
+MOV PC,R14
+
+.show_regs
+
+LDRB R0,trace2
+CMP R0,#1
+BEQ showregs_skip
+
+;SWI "6502_Checkkdata"
+LDR R0,[mem,#key_addr]
+LDRB R0,[R0,#-4]
+
+CMP R0,#&1F ; Insert
+MOVNE PC,R14
+MOVEQ R1,#1
+STREQ R1,trace2
+
+MOV R0,#&80
+ADR R1,showregs_filename
+SWI "OS_Find"
+
+STR R0,showregs_filehandle
+
+.showregs_skip
+
+
+;LDR R0,reg_comp
+;CMP R0,zpc
+;MOVEQ R0,#1
+;STREQB R0,trace
+
+;ADD R12,mem,#&DF00
+;LDRB R12,[R12,#&DA]
+;CMP R12,#0
+;MOVEQ R12,#1
+;STREQB R12,trace
+
+;LDRB R0,trace
+;CMP R0,#1
+;MOVNE PC,14
+
+STR R14,showregsR14
+ADR R14,showregs_text
+
+FNshowregs
+
+;ADR R0,showregs_text
+;SUB R1,R14,R0 ; number of bytes to print
+;SWI "OS_WriteN"
+
+STR R3,showregsR3
+STR R4,showregsR4
+
+MOV R0,#2
+LDR R1,showregs_filehandle
+ADR R2,showregs_text
+SUB R3,R14,R2 ; number of bytes to print
+SWI "OS_GBPB"
+
+LDR R3,showregsR3
+LDR R4,showregsR4
+
+LDR PC,showregsR14
+;MOV PC,R14
+
+.showregsR14
+EQUD 0
+.showregsR3
+EQUD 0
+.showregsR4
+EQUD 0
+
+.showregs_filehandle
+EQUD 0
+
+.showregs_filename
+EQUS "TRACE2"+CHR$0+CHR$13
+ALIGN
+
+.showregs_text
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+
+.read_ifr
+LDRB R0,[mem,#ifr]
+
+LDR R1,[mem,#min]
+SUB R1,R1,time
+LDR R12,[mem,#vsync_timer]
+SUB R12,R12,R1
+CMP R12,#3
+ORRLT R0,R0,#%10 ; vsync
+;
+;
+; CMP zpc,#&8000 << 16
+; ORRLT R0,R0,#%10 ; vsync
+
+
+LDRB R1,[mem,#ier]
+BIC R0,R0,#&80
+ANDS R1,R1,R0
+ORRNE R0,R0,#&80
+
+MOV PC,R14
+
+.read_ier
+LDRB R0,[mem,#ier]
+ORR R0,R0,#&80
+MOV PC,R14
+
+.read_ifr2
+LDRB R0,[mem,#ifr2]
+LDRB R1,[mem,#ier2]
+BIC R0,R0,#&80
+ANDS R1,R1,R0
+ORRNE R0,R0,#&80
+MOV PC,R14
+
+.read_ier2
+LDRB R0,[mem,#ier2]
+ORR R0,R0,#&80
+MOV PC,R14
+
+.ldrb41
+
+SUB R12,mem,#512 ; sheila
+LDRB R1,[R12,#&C] ; PCR
+LDRB R2,[mem,#ifr]
+AND R13,R1,#%1110
+TEQ R13,   #%0010
+TEQNE R13, #%0110
+BICEQ R2,R2,#%11
+BICNE R2,R2,#%10
+STRB R2,[mem,#ifr]
+
+LDRB R0,[R12,#&4F]
+MOV PC,R14
+
+.ldrb4F
+
+SUB R12,mem,#512 ; sheila
+LDRB R0,[R12,#&4F]
+MOV PC,R14
+
+
+.readT4low_count
+LDRB R1,[mem,#ifr2]
+BIC R1,R1, #%00100000
+STRB R1,[mem,#ifr2]
+LDR R0,[mem,#T4]
+LDR R1,[mem,#min]
+SUB R0,R0,R1,LSL#7
+ADD R0,R0,time,LSL#7
+;TST R0,#1 << 15 ; ???
+;SUBNE time,time,#1
+MOV R0,R0,LSR#8
+AND R0,R0,#&FF
+MOV PC,R14
+
+.readT4high_count
+LDR R0,[mem,#T4]
+LDR R1,[mem,#min]
+SUB R0,R0,R1,LSL#7
+ADD R0,R0,time,LSL#7
+;TST R0,#1 << 15 ; ???
+;SUBNE time,time,#1
+MOV R0,R0,LSR#16
+MOV PC,R14
+
+.readT3low_count
+LDRB R1,[mem,#ifr2]
+BIC R1,R1, #%1 << 6
+STRB R1,[mem,#ifr2] ; clear T3 interrupt flag
+LDR R0,[mem,#T3]
+LDR R1,[mem,#min]
+SUB R0,R0,R1,LSL#7
+ADD R0,R0,time,LSL#7
+;TST R0,#1 << 15 ; ???
+;SUBNE time,time,#1
+MOV R0,R0,LSR#8
+AND R0,R0,#&FF
+MOV PC,R14
+
+.readT3high_count
+LDR R0,[mem,#T3]
+LDR R1,[mem,#min]
+SUB R0,R0,R1,LSL#7
+ADD R0,R0,time,LSL#7
+;TST R0,#1 << 15 ; ???
+;SUBNE time,time,#1
+MOV R0,R0,LSR#16
+MOV PC,R14
+
+.readT3low_latch
+LDRB R0,[mem,#T3R+2]
+MOV PC,R14
+
+.readT3high_latch
+LDRB R0,[mem,#T3R+3]
+MOV PC,R14
+
+.ACRtemp
+EQUD 0
+
+.writeACR2
+;MOV R0,#0
+;STRB R0,[mem,#T3mode]
+SUB R0,mem,#512
+LDRB R1,[R0,#&60]
+ORR R1,R1,#&80
+STRB R1,[R0,#&60]
+;MOV R0,#1
+;STRB R0,ACRtemp
+MOV PC,R14
+
+.writeT3low_latch
+STRB R0,[mem,#T3R+2]
+MOV PC,R14
+
+.writeT3high_count
+
+SUB R1,mem,#512
+LDRB R2,[R1,#&60]
+BIC R2,R2,#1<<7
+STRB R2,[R1,#&60] ; clear PB7
+
+STRB R0,[mem,#T3R+3]
+LDR R0,[mem,#T3R]
+MOV R0,R0,LSR#8
+
+CMP R0,#0 : MOVEQ R0,#&10000<<8
+
+ADD R0,R0,#2 << 8
+
+CMP R0,time,LSL#7 ; fix Exile's speech
+
+BHI skip_T3adjust
+LDRB R2,[mem,#ier2]
+
+TST R2,#%01000000
+BEQ skip_T3adjust
+
+LDR R1,[mem,#min] ; min=min-(oldtime-newtime)
+SUB R1,R1,time
+ADD R1,R1,R0,LSR#7
+STR R1,[mem,#min]
+
+MOV time,R0,LSR#7
+
+.skip_T3adjust
+LDR R1,[mem,#min]
+ADD R0,R0,R1,LSL#7
+SUB R0,R0,time,LSL#7
+STR R0,[mem,#T3]
+LDRB R1,[mem,#ifr2]
+BIC R1,R1, #%1 << 6
+STRB R1,[mem,#ifr2] ; clear T3 interrupt flag
+;SUB R0,R0,#&D
+SUB R0,mem,#512 ; sheila
+
+
+LDRB R1,[R0,#&6B]
+EOR R1,R1,#1<<7
+ANDS R1,R1,#&C0
+LDREQB R1,[R0,#&60]
+BICEQ R1,R1,#&80
+STREQB R1,[R0,#&60]
+
+;LDRB R12,[mem,#crt_regs+9]
+;CMP R12,#3
+;MOVEQ PC,R14 ; fortress fudge
+
+MOV R0,#1 : STRB R0,[mem,#T3mode] ; agrees with BeebIt
+MOV PC,R14
+
+.writeT3high_latch
+STRB R0,[mem,#T3R+3]
+LDRB R1,[mem,#ifr2]
+BIC R1,R1, #%1 << 6
+STRB R1,[mem,#ifr2] ; clear T3 interrupt flag (Skirimish!)
+MOV PC,R14
+
+.writeT4low_latch
+STRB R0,[mem,#T4R+2]
+MOV PC,R14
+
+.writeT4high_count
+LDRB R1,[mem,#T4R+2]
+ADD R1,R1,R0,LSL#8
+
+MOV R1,R1,LSL#8
+
+CMP R1,#0 : MOVEQ R1,#&10000<<8
+
+ADD R1,R1,#2 << 8
+
+CMP R1,time,LSL#7 ; "Exile" fix
+
+BHI skip_T4adjust
+LDRB R2,[mem,#ier2]
+
+TST R2,#%00100000
+BEQ skip_T4adjust
+
+LDR R0,[mem,#min] ; min=min-(oldtime-newtime)
+SUB R0,R0,time
+ADD R0,R0,R1,LSR#7
+STR R0,[mem,#min]
+
+MOV time,R1,LSR#7
+
+.skip_T4adjust
+LDR R0,[mem,#min]
+ADD R1,R1,R0,LSL#7
+SUB R1,R1,time,LSL#7
+STR R1,[mem,#T4]
+LDRB R1,[mem,#ifr2]
+BICS R1,R1, #%10100000
+STRB R1,[mem,#ifr2]
+MOV R0,#1 : STRB R0,[mem,#T4mode]
+MOV PC,R14
+
+.readT2low_count
+LDRB R1,[mem,#ifr]
+BIC R1,R1, #%101 << 5
+STRB R1,[mem,#ifr] ; clear T2 interrupt flag
+LDR R0,[mem,#T2]
+LDR R1,[mem,#min]
+SUB R0,R0,R1,LSL#7
+ADD R0,R0,time,LSL#7
+;TST R0,#1 << 15 ; ???
+;SUBNE time,time,#1
+MOV R0,R0,LSR#8
+AND R0,R0,#&FF
+MOV PC,R14
+
+.readT2high_count
+LDR R0,[mem,#T2]
+LDR R1,[mem,#min]
+SUB R0,R0,R1,LSL#7
+ADD R0,R0,time,LSL#7
+;TST R0,#1 << 15 ; ???
+;SUBNE time,time,#1
+MOV R0,R0,LSR#16
+MOV PC,R14
+
+.readT1low_count
+LDRB R1,[mem,#ifr]
+BIC R1,R1, #%1 << 6
+STRB R1,[mem,#ifr] ; clear T1 interrupt flag
+LDR R0,[mem,#T1]
+LDR R1,[mem,#min]
+SUB R0,R0,R1,LSL#7
+ADD R0,R0,time,LSL#7
+;TST R0,#1 << 15 ; ???
+;SUBNE time,time,#1
+MOV R0,R0,LSR#8
+AND R0,R0,#&FF
+MOV PC,R14
+
+.readT1high_count
+LDR R0,[mem,#T1]
+LDR R1,[mem,#min]
+SUB R0,R0,R1,LSL#7
+ADD R0,R0,time,LSL#7
+;TST R0,#1 << 15 ; ???
+;SUBNE time,time,#1
+MOV R0,R0,LSR#16
+MOV PC,R14
+
+.readT1low_latch
+LDRB R0,[mem,#T1R+2]
+MOV PC,R14
+
+.readT1high_latch
+LDRB R0,[mem,#T1R+3]
+MOV PC,R14
+
+.writeT1low_latch
+STRB R0,[mem,#T1R+2]
+MOV PC,R14
+
+.writeT1high_count
+
+SUB R1,mem,#512
+LDRB R2,[R1,#&40]
+BIC R2,R2,#1<<7
+STRB R2,[R1,#&40] ; clear PB7
+
+STRB R0,[mem,#T1R+3]
+LDR R0,[mem,#T1R]
+MOV R0,R0,LSR#8
+CMP R0,#0 : MOVEQ R0,#&10000<<8
+ADD R0,R0,#2 << 8
+
+CMP R0,time,LSL#7 ; "Exile" fix
+
+BHI skip_T1adjust
+LDRB R2,[mem,#ier]
+
+TST R2,#%01000000
+BEQ skip_T1adjust
+
+LDR R1,[mem,#min] ; min=min-(oldtime-newtime)
+SUB R1,R1,time
+ADD R1,R1,R0,LSR#7
+STR R1,[mem,#min]
+
+MOV time,R0,LSR#7
+
+.skip_T1adjust
+LDR R1,[mem,#min]
+ADD R0,R0,R1,LSL#7
+SUB R0,R0,time,LSL#7
+STR R0,[mem,#T1]
+LDR R1,[mem,#ifr]
+BIC R1,R1, #%1 << 6
+STRB R1,[mem,#ifr] ; clear T1 interrupt flag
+SUB R0,mem,#512 ; sheila
+LDRB R1,[R0,#&40]
+BIC R1,R1,#&80
+STRB R1,[R0,#&40]
+MOV R0,#1 : STRB R0,[mem,#T1mode]
+MOV PC,R14
+
+.writeT1high_latch
+STRB R0,[mem,#T1R+3]
+LDRB R1,[mem,#ifr]
+BIC R1,R1, #%1 << 6
+STRB R1,[mem,#ifr] ; clear T1 interrupt flag
+MOV PC,R14
+
+.writeT2low_latch
+STRB R0,[mem,#T2R+2]
+MOV PC,R14
+
+.writeT2high_count
+LDRB R1,[mem,#T2R+2]
+ADD R1,R1,R0,LSL#8
+
+MOV R1,R1,LSL#8
+
+CMP R1,#0 : MOVEQ R1,#&10000<<8
+
+ADD R1,R1,#2 << 8
+
+CMP R1,time,LSL#7 ; "Exile" fix
+
+BHI skip_T2adjust
+LDRB R2,[mem,#ier]
+
+TST R2,#%00100000
+BEQ skip_T2adjust
+
+LDR R0,[mem,#min] ; min=min-(oldtime-newtime)
+SUB R0,R0,time
+ADD R0,R0,R1,LSR#7
+STR R0,[mem,#min]
+
+MOV time,R1,LSR#7
+
+.skip_T2adjust
+
+
+LDR R0,[mem,#min]
+ADD R1,R1,R0,LSL#7
+SUB R1,R1,time,LSL#7
+STR R1,[mem,#T2]
+LDR R1,[mem,#ifr]
+BICS R1,R1, #%10100000
+STRB R1,[mem,#ifr] ; clear T2 interrupt flag
+MOV R0,#1 : STRB R0,[mem,#T2mode]
+MOV PC,R14
+
+;.T1mode
+;EQUD 1
+;.T2mode
+;EQUD 0
+;.T3mode
+;EQUD 1
+;.T4mode
+;EQUD 0
+;.T1
+;EQUD &1234 << 16
+;.T1R
+;EQUD 20000 << 16
+;.T2
+;EQUD 98765 << 16
+;.T2R
+;EQUD 255   << 16
+;.T3
+;EQUD 6777  << 16
+;.T3R
+;EQUD 6777  << 16
+;.T4
+;EQUD 7380  << 16
+;.T4R
+;EQUD 255   << 16
+;.screen
+;EQUD 432
+;.screenR
+;EQUD 40000
+;.min
+;EQUD 200
+;.sound_timer
+;EQUD 0
+
+
+.keychk
+EQUD 0
+
+.CLI
+BIC F,F,#%100
+ADD zpc,zpc,#1 << 16
+LDRB R0,keychk
+CMP R0,#0
+BLEQ keyboard
+;BL keyboard
+FNfetch3(0,2)
+
+
+
+.fetch2
+
+LDR R0,[mem,#min]
+SUB R0,R0,time
+LDR R1,[mem,#sound_timer]
+SUB R1,R1,R0
+STR R1,[mem,#sound_timer]
+
+
+MOV R0,#0 : STR R0,keychk
+
+LDR R0,[mem,#min]
+SUB R0,R0,time ; ***
+LDR R1,[mem,#vsync_timer]
+SUBS R1,R1,R0
+STRGT R1,[mem,#vsync_timer]
+BLLE vsync_interrupt
+
+LDR R0,[mem,#min]
+SUB R0,R0,time ; ***
+LDR R1,[mem,#screen]
+SUBS R1,R1,R0
+;STRGT R1,[mem,#screen]
+STR R1,[mem,#screen]
+BLLE vsync
+
+LDR R0,[mem,#min]
+SUB R0,R0,time ; ***
+LDR R1,speed
+SUBS R1,R1,R0
+STRGT R1,speed
+BLLE speed_control
+
+; LDR R0,[mem,#T1mode]
+; TST R0,#%1
+; BEQ skip_timer1
+
+LDR R0,[mem,#min]
+SUB R0,R0,time ; ***
+LDR R1,[mem,#T1]
+SUBS R1,R1,R0,LSL#7
+STRGT R1,[mem,#T1]
+BLLE timer1
+.skip_timer1
+
+; LDR R0,[mem,#T2mode]
+; TST R0,#%1
+; BEQ skip_timer2
+
+LDR R0,[mem,#min]
+SUB R0,R0,time ; ***
+LDR R1,[mem,#T2]
+;BIC R1,R1,#&FF000000 makes skirmish too fast
+SUBS R1,R1,R0,LSL#7
+STRGT R1,[mem,#T2]
+BLLE timer2
+.skip_timer2
+
+; LDR R0,[mem,#T3mode]
+; TST R0,#%1
+; BEQ skip_timer3
+
+LDR R0,[mem,#min]
+SUB R0,R0,time ; ***
+LDR R1,[mem,#T3]
+SUBS R1,R1,R0,LSL#7
+STRGT R1,[mem,#T3]
+BLLE timer3
+.skip_timer3
+
+; LDR R0,[mem,#T4mode]
+; TST R0,#%1
+; MVNEQ R1,#0 ; -1
+; STREQ R1,T4
+; BEQ skip_timer4
+
+SUB R0,mem,#512             ;  NASTY HACK
+LDRB R0,[R0,#&6B]           ;  to make Skirmish & Nutcracka
+AND R0,R0,#&C0              ;  both work
+CMP R0,#&40                 ;
+                            ;
+                            ;
+LDR R0,[mem,#min]           ;
+SUB R0,R0,time ; ***        ;
+LDR R1,[mem,#T4]            ;
+BICNE R1,R1,#&FF000000      ;
+SUBS R1,R1,R0,LSL#7
+STRGT R1,[mem,#T4]
+BLLE timer4
+.skip_timer4
+
+LDR R0,[mem,#min]
+SUB R0,R0,time
+LDR R1,[mem,#tape_count]
+SUBS R1,R1,R0
+STRGT R1,[mem,#tape_count]
+BLLE tape_fetch
+
+LDRB R1,[mem,#ifr]
+LDRB R2,[mem,#ifr2]
+LDRB R12,[mem,#ier] : AND R1,R1,R12
+LDRB R12,[mem,#ier2]: AND R2,R2,R12
+;BIC R1,R1,#&80 : ;BIC R2,R2,#&80
+
+
+;LDRB R0,[mem,#ier]
+;BIC R0,R0,#%1 ; ignore keyboard interrupt
+;ANDS R0,R0,R1
+;ORRNE R1,R1,#&80
+;LDRB R0,[mem,#ier2]
+;ANDS R0,R0,R2
+;ORRNE R2,R2,#&80
+
+TST F,#%100
+BNE skip_do_interrupt
+;TST R1,#&80
+;TSTEQ R2,#&80
+ANDS R1,R1,#%01111111
+ANDEQS R2,R2,#%01111111
+BEQ skip_do_interrupt
+;CMP R13,#1
+;BNE skip_do_interrupt
+
+.do_interrupt
+FNdo_interrupt
+
+.skip_do_interrupt
+
+;BL keyboard MOVED TO CLI!!!
+BL keys2
+.skip_keys
+
+LDR time,[mem,#T1]
+MOV time,time,LSR#7
+
+LDR R1,[mem,#screen]
+CMP R1,#0 : MOVEQ R1,time
+CMP R1,time
+MOVLT time,R1
+
+LDR R1,[mem,#vsync_timer]
+CMP R1,#0 : MOVEQ R1,time
+CMP R1,time
+MOVLT time,R1
+
+LDRB R1,[mem,#T2mode]
+CMP R1,#0
+BEQ skipT2
+LDR R1,[mem,#T2]
+
+;RJW
+MOVS R1,R1,LSR#7
+MOVEQ R1,time
+CMP R1,time
+MOVLT time,R1
+.skipT2
+LDR R1,[mem,#T3]
+MOVS R1,R1,LSR#7
+
+; RJW
+MOVEQ R1,time
+CMP R1,time
+MOVLT time,R1
+LDRB R1,[mem,#T4mode]
+CMP R1,#0
+BEQ skipT4 ;********************** 32/26 bit difference (commented out in 26)
+LDR R1,[mem,#T4]
+
+; RJW
+MOVS R1,R1,LSR#7
+MOVEQ R1,time
+CMP R1,time
+MOVLT time,R1
+.skipT4
+;CMP time,#0 : ;MOVEQ time,#1
+SUB time,time,#4
+STR time,[mem,#min]
+FNfetch2
+
+.interrupt
+
+TST F,#%100
+MOVNE PC,R14
+
+LDRB R1,[mem,#ifr]
+LDRB R2,[mem,#ifr2]
+LDRB R12,[mem,#ier] : AND R1,R1,R12
+LDRB R12,[mem,#ier2]: AND R2,R2,R12
+
+ANDS R1,R1,#%01111111
+ANDEQS R2,R2,#%01111111
+MOVEQ PC,R14
+
+FNdo_interrupt
+
+MOV PC,R14
+
+.F10temp
+EQUD 0
+
+.F10
+SWI "6502_Getkdata"
+STR R14,F10temp
+LDRB R0,[mem,#vsync_fps]
+ADD R0,R0,#1
+STRB R0,[mem,#vsync_fps]
+MOV R0,#255
+STRB R0,[mem,#lastmode]
+;BL updatescreen
+;BL force_update_pal
+BL cursor
+LDR PC,F10temp
+
+;.fetch3
+.keys2
+;SWI "6502_Checkkdata"
+LDR R0,[mem,#key_addr]
+LDRB R0,[R0,#-4]
+
+
+CMP R0,#&1F ; Insert
+MOVEQ R1,#1
+STREQ R1,trace2
+CMP R0,#10 ; F10
+BEQ F10
+CMP R0,#11 ; F11
+CMPNE R0,#12 ; F12
+CMPNE R0,#15 ; break
+BEQ raw_exit2
+MOV PC,R14
+
+.keyboard
+MOV R0,#1 : STR R0,keychk
+
+
+;SWI "6502_Checkkdata"
+LDR R0,[mem,#key_addr]
+LDRB R0,[R0,#-4]
+CMP R0,#&FF : MOVEQ PC,R14
+
+
+SWI "6502_Getkdata"
+;CMP R0,#&FF : ;MOVEQ PC,R14
+CMP R0,#&1F ; Insert
+MOVEQ R1,#1
+STREQ R1,trace2
+CMP R0,#10 ; F10
+BEQ F10
+CMP R0,#15
+CMPNE R0,#12
+CMPNE R0,#11 ; F11
+BEQ raw_exit
+
+;CMP R0,#0 ; escape
+;LDREQB R0,[mem,#&FF]
+;ORREQ R0,R0,#&80
+;STREQB R0,[mem,#&FF]
+LDRB R0,[R1,R0]
+CMP R0,#&FF
+;BEQ not_keyboard
+MOVEQ PC,R14
+
+;B not_keyboard
+CMP R0,#10 ; shift, ctrl
+MOVLT PC,R14
+LDRB R1,[mem,#ifr]
+ORR R1,R1,#%1 ; interrupt is from keyboard
+STRB R1,[mem,#ifr]
+LDRB R0,[mem,#ier]
+TST R0,#%1
+MOVEQ PC,R14
+FNdo_interrupt
+MOV PC,R14
+
+
+;.no_interrupt
+;LDRB R0,trace2
+;CMP R0,#0
+;BEQ notrace2
+;FNshowregs
+;.notrace2
+;FNfetch2
+
+.define_cursor
+MOV R1,#0 : STRB R1,cursor_state
+.define_cursor2
+LDRB R1,cursor_state
+CMP R1,#0:MOVNE PC,R14
+
+LDRB R1,[mem,#crt_regs+10] ; cursor start
+
+EOR R12,R1,#%100000
+TST R12,#%1100000
+BEQ blank_cursor
+
+LDRB R2,[mem,#crt_regs+11] ; cursor end
+AND R1,R1,#31
+AND R2,R2,#31
+
+SUBS R12,R2,R1
+BLT blank_cursor
+
+
+LDRB R12,[mem,#fe20]
+
+TST R12,#%10 ; teletext
+;MVNNE R12,#8 ; was 7
+;MOVEQ R12,#0 ; was 1
+
+SUBNE R2,R2,#9
+STRB R2,cursor_height
+
+AND R12,R12,#%01110000
+
+ADR R0,cursor_modewidthdata
+LDRB R0,[R0,R12,LSR#4]
+
+ADR R13,cursor_modeR13data
+LDRB R13,[R13,R12,LSR#4]
+
+LDRB R12,[mem,#fe20]
+
+TST R12,#%10 ; teletext
+BEQ skip_tt
+TEQ PC,PC    ; set Z if 32 bit ******** SH removed TEQ R0,R0 *********
+MOVEQ R0,#4  ; 32 bit iyonix }_ need to cope with Pi and BB / etc.
+MOVEQ R13,#1 ; 32 bit IYONIX }  MODE7...
+MOVNE R0,#2
+MOVNE R13,#0
+.skip_tt
+
+;EOR R12,R12,#%100000
+
+;TST R12,#%1000
+;MOVEQ R13,#2 ; mode 5
+;MOVNE R13,#1
+
+;MOV R0,#1
+;MOV R0,R0,LSL R13
+;TSTEQ R12,#%100000
+;MOVEQ R0,#8 ; mode 2
+;MOVEQ R13,#3
+STRB R0,cursor_width
+
+
+;MOV R0,#1
+;MOV R0,R0,LSL R13
+;STRB R0,cursor_width
+
+;MOV R13,#2
+
+ADR R0,cursor_data
+SUB R0,R0,R1,LSL R13
+
+;SUB R0,R0,R12,LSL #2
+STR R0,cursor_block+6
+
+MOV R0,#21
+ADR R1,cursor_block
+SWI "OS_Word"
+MOV PC,R14      ; *********************************
+
+.blank_cursor
+MOV R1,#1 : STRB R1,cursor_state
+.blank_cursor2
+
+ADR R1,cursor_block
+ADR R0,blank_data
+STR R0,cursor_block+6
+MOV R0,#21
+SWI "OS_Word"
+MOV PC,R14
+
+.cursor_modewidthdata
+EQUB 4 ; mode4
+EQUB 2 ; mode0,3
+EQUB 4
+EQUB 4
+EQUB 8 ; mode5
+EQUB 4 ; mode1
+EQUB 2
+EQUB 8 ; mode2
+
+.cursor_modeR13data
+EQUB 2 ; mode4
+EQUB 1 ; mode0,3
+EQUB 2
+EQUB 2
+EQUB 3 ; mode5
+EQUB 2 ; mode1
+EQUB 2
+EQUB 3 ; mode2
+
+.cursor_state
+EQUD 0
+
+.cursor_flash
+EQUD 0
+.flash_state
+EQUD 0
+
+;.not_keyboard
+EQUW 0
+.cursor_block
+EQUB 0
+EQUB 2 ; shape number
+.cursor_width
+EQUB 2 ; width in bytes
+.cursor_height
+EQUB 9 ; height in pixels
+EQUB 0 ; activeX
+EQUB 0 ; activeY
+EQUD 0 ; address of data
+
+
+ALIGN
+.blank_data
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+EQUD 0
+.cursor_data
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+EQUD &FFFFFFFF
+
+.cursor7
+
+LDRB R0,[mem,#crt_regs+14]
+LDRB R1,[mem,#crt_regs+15]
+ADD R0,R1,R0,LSL#8
+
+LDRB R1,[mem,#crt_regs+12] : ;AND R1,R1,#%1111
+LDRB R2,[mem,#crt_regs+13]
+ADD R2,R2,R1,LSL#8
+SUBS R0,R0,R2
+MOVMI R0,#0
+
+;LDRB R12,[mem,#crt_regs+1] ; horiz. chars
+;MOV R12,#40
+
+;FNdivmod(0,12,1,2,13) ; R0 = R0 MOD R12
+                      ; R2 = R0 DIV R12
+;RSB R2,R2,#25
+;MOV R2,R2,LSL#5
+;ADD R2,R2,R2,LSR#2
+;MOV R0,R0,LSL#5
+;ADD R0,R0,R2,LSL#16
+; We know that R0<1000
+; R0 = R0 MOD 40
+; R2 = R0 DIV 40
+;FNdivmod(0,12,1,2,13)
+MOV R2,#((25<<5)+(25<<3))<<16
+CMP R0,#640
+SUBGE R0,R0,#640
+SUBGE R2,R2,#((1<<9)+(1<<7))<<16
+CMP R0,#320
+SUBGE R0,R0,#320
+SUBGE R2,R2,#((1<<8)+(1<<6))<<16
+CMP R0,#160
+SUBGE R0,R0,#160
+SUBGE R2,R2,#((1<<7)+(1<<5))<<16
+CMP R0,#80
+SUBGE R0,R0,#80
+SUBGE R2,R2,#((1<<6)+(1<<4))<<16
+CMP R0,#40
+SUBGE R0,R0,#40
+SUBGE R2,R2,#((1<<5)+(1<<3))<<16
+
+
+ADD R0,R2,R0,LSL#5
+
+SUB R0,R0,#1<<16
+
+LDRB R1,[mem,#crt_regs+5]
+AND R1,R1,#7
+SUB R0,R0,R1,LSL#16 ; *TV
+
+TEQ PC,PC ; set Z if 32 bit ********* SH removed TEP R0,R0 - n/r *********
+SUBEQ R0,R0,#16<<16 ; IYONIX ********** what about others?
+
+STR R0,osword21_5_block1
+ADR R1,osword21_5_block
+MOV R0,#21
+SWI "OS_Word" ; set pointer position
+;MOV PC,R14
+B define_cursor2
+
+;B cursor_cont
+
+.padding_to_align_osword
+EQUB 0 : EQUB 0 : EQUB 0
+.osword21_5_block
+EQUB 5
+.osword21_5_block1
+EQUD 0
+
+EOR R0,R0,#&20 : ADD R0,R0,#&74 : AND R0,R0,#&FF
+
+
+.cursor
+MOV R0,#0 : STR R0,[mem,#cursor_tamper]
+
+\LDRB R1,[mem,#cursor_on]
+\CMP R1,#0:\MOVNE PC,R14
+TST F,#1 << 10 ; cursor on?
+MOVEQ PC,R14
+
+LDRB R0,[mem,#fe20]
+
+TST R0,#%11100000
+BEQ blank_cursor
+
+.force_cursor
+
+TST R0,#%10 ; teletext
+BNE cursor7
+
+LDRB R0,[mem,#crt_regs+14]
+LDRB R1,[mem,#crt_regs+15]
+ADD R0,R1,R0,LSL#8
+
+LDRB R1,[mem,#crt_regs+12] : AND R1,R1,#%1111
+LDRB R2,[mem,#crt_regs+13]
+ADD R2,R2,R1,LSL#8
+SUBS R0,R0,R2
+MOVMI R0,#0
+
+.cursor_cont
+
+LDRB R12,[mem,#crt_regs+1] ; horiz. chars
+
+CMP R12,#0 : MOVEQ PC,R14
+
+;FNdivmod(0,12,1,2,13) ; R0 = R0 MOD R12
+                      ; R2 = R0 DIV R12
+;RSB R2,R2,#32
+;MOV R2,R2,LSL#5
+
+; We know R0<32*R12
+; R0 = R0 MOD R12
+; R2 = R0 DIV R12
+MOV R2,#32<<21
+CMP R0,R12,LSL#4
+SUBGE R0,R0,R12,LSL#4
+SUBGE R2,R2,#16<<21
+CMP R0,R12,LSL#3
+SUBGE R0,R0,R12,LSL#3
+SUBGE R2,R2,#8<<21
+CMP R0,R12,LSL#2
+SUBGE R0,R0,R12,LSL#2
+SUBGE R2,R2,#4<<21
+CMP R0,R12,LSL#1
+SUBGE R0,R0,R12,LSL#1
+SUBGE R2,R2,#2<<21
+CMP R0,R12
+SUBGE R0,R0,R12
+SUBGE R2,R2,#1<<21
+
+
+LDRB R1,[mem,#fe20] : TST R1,#%10000 : MOVEQ R0,R0,LSL#1
+;MOV R0,R0,LSL#4         ;   these two surplus
+;ADD R0,R0,R2,LSL#16     ;
+ADD R0,R2,R0,LSL#4       ;   this line missing in 1.30
+
+SUB R0,R0,#1<<16
+
+LDRB R1,[mem,#crt_regs+5]
+AND R1,R1,#7
+SUB R0,R0,R1,LSL#18 ; *TV
+
+SUB R0,R0,#16<<16 ; IYONIX ************ needs a TEQ PC,PC ************
+
+STR R0,osword21_5_block1
+ADR R1,osword21_5_block
+MOV R0,#21
+SWI "OS_Word" ; set pointer position
+;MOV PC,R14
+B define_cursor2
+
+.mono_time
+EQUD 0
+.speed
+EQUD 0
+
+.speed_control
+LDR R0,[mem,#speedR]
+ADD R1,R1,R0
+STR R1,speed
+
+LDR R1,mono_time
+.mono_loop
+SWI "OS_ReadMonotonicTime"
+MOV R0,R0,LSR#1
+CMP R0,R1
+BEQ mono_loop
+STR R0,mono_time
+
+MOV PC,R14
+
+.vsync_mode7
+;LDR R0,[mem,#screenR]
+;LDR R1,[mem,#screen]
+;ADD R1,R1,R0
+;STR R1,[mem,#screen]
+
+;LDRB R1,[mem,#ifr]
+;ORR R1,R1,#%10 ; interrupt is from vsync
+;STRB R1,[mem,#ifr]
+
+STR R14,mode7R14
+BL keyboard
+
+
+LDR R14,mode7R14
+
+B updatescreen7_selfcontained ; and return
+
+.mode7R14
+EQUD 0
+
+
+.vsync_interrupt
+
+
+ADD R1,R1,#&9C00
+ADD R1,R1,#&0040 ; &9C40=40000
+STR R1,[mem,#vsync_timer]
+
+LDRB R1,[mem,#vsync_fps]
+SUBS R1,R1,#1
+LDRLTB R1,[mem,#vsync_fps_reset]
+STRB R1,[mem,#vsync_fps]
+
+
+LDRB R1,[mem,#ifr]
+ORR R1,R1,#%10 ; interrupt is from vsync
+STRB R1,[mem,#ifr]
+
+STR R14,vsyncR14
+
+LDRB R0,ldrb40_tamper
+CMP R0,#0 : BLNE ldrb40_update
+
+LDR R0,[mem,#tamper]
+CMP R0,#0
+BEQ no_tamper
+
+MOV R0,#0
+STR R0,[mem,#tamper]
+BL recalc_wrap
+
+TST F,#1 << 10 ; cursor on?
+BLNE cursor
+.no_tamper
+
+LDR R0,[mem,#cursor_tamper]
+CMP R0,#0
+BLNE cursor
+
+TST F,#1 << 10 ; cursor on?
+LDREQ PC,vsyncR14
+
+LDRB R1,cursor_state
+CMP R1,#0
+LDRNE PC,vsyncR14
+
+LDRB R1,[mem,#crt_regs+10]
+TST R1,#%1000000 ; cursor blinking enabled?
+LDREQ PC,vsyncR14
+
+LDRB R0,cursor_flash
+SUBS R0,R0,#1
+STRB R0,cursor_flash
+LDRGE PC,vsyncR14
+
+TST R1,#%100000
+MOVEQ R0,#15
+MOVNE R0,#31
+STRB R0,cursor_flash
+
+LDR R14,vsyncR14
+LDRB R0,flash_state
+EOR R0,R0,#1
+STRB R0,flash_state
+CMP R0,#0 : BEQ blank_cursor2
+B define_cursor2
+
+
+;LDR PC,vsyncR14
+
+.vsync_ticksperscanline
+EQUD &10
+.vsync_ticksdrawn
+EQUD &10000
+.vsyncR14       ;******************* new position 32bit
+EQUD 0
+.return_addr       ;******************* new position 32bit
+EQUD 0
+
+.roms_addr       ;******************* new position 32bit
+EQUD 0
+
+.update_midscreen ; entry if mode changed
+
+STR R14,vsyncR14
+
+LDRB R1,[mem,#firstline]
+CMP R1,#0
+BEQ pal_not_first_line
+B pal_entry
+
+.palette
+STR R14,vsyncR14
+SUB R12,mem,#-pal_regs
+AND R1,R0,#%1111 : ADD R1,R1,R1,LSL#4
+STRB R1,[R12,R0,LSR#4]
+
+
+LDRB R1,[mem,#firstline]
+CMP R1,#0
+BEQ pal_not_first_line
+;MOV R1,#0
+;STRB R1,[mem,#firstline]
+;;;;;BL update_palette
+;BL draw_first_line
+LDR R1,vsync_ticksdrawn
+LDR R0,vsync_ticksperscanline
+ADD R1,R1,R0
+ADD R1,R1,R0,LSR#1
+;STR R1,vsync_ticksdrawn
+
+LDR R0,[mem,#screenR] ; 40000
+LDR R14,[mem,#screen] : SUB R0,R0,R14
+LDR R14,[mem,#min] : ADD R0,R0,R14
+SUB R0,R0,time
+
+CMP R0,R1
+BLE pal_exit
+
+.pal_entry
+
+MOV R1,#0
+STRB R1,[mem,#firstline]
+
+BL draw_first_line
+LDR R1,vsync_ticksdrawn
+LDR R0,vsync_ticksperscanline
+ADD R1,R1,R0
+ADD R1,R1,R0,LSR#1
+STR R1,vsync_ticksdrawn
+
+
+.pal_not_first_line
+
+LDR R1,vsync_ticksdrawn
+.pal_loop
+LDR R0,[mem,#screenR] ; 40000
+LDR R14,[mem,#screen] : SUB R0,R0,R14
+LDR R14,[mem,#min] : ADD R0,R0,R14
+SUB R0,R0,time
+
+CMP R0,R1
+BLE pal_exit
+
+LDRB R14,[mem,#vsync_fps_copy]
+CMP R14,#0
+BNE pal_screendrawn
+
+BL draw_general_line
+CMP R0,#0
+BEQ pal_screendrawn
+
+LDR R1,vsync_ticksdrawn
+LDR R0,vsync_ticksperscanline
+ADD R1,R1,R0
+STR R1,vsync_ticksdrawn
+B pal_loop
+
+.pal_screendrawn
+MOV R0,#&10000
+STR R0,vsync_ticksdrawn
+LDR PC,vsyncR14
+
+.pal_exit
+LDR R14,vsyncR14
+B update_palette
+
+
+
+.vsync
+STR R14,vsyncR14
+
+SUB R0,mem,#512 ; sheila
+LDRB R0,[R0,#&20] ; PCR
+ANDS R0,R0,#(1<<4) ; clock speed
+
+LDRNEB R0,[mem,#crt_regs+0]
+ADDNE R0,R0,#1
+
+SUBNE R1,R1,R0,LSR#1
+;SUBNE R1,R1,#64 - new 32bit, but commented ******************
+
+
+LDR R0,[mem,#screenR]
+ADD R1,R1,R0
+STR R1,[mem,#screen]
+
+LDRB R1,[mem,#crt_regs+3]:MOV R1,R1,LSR#4 ; scanline for interrupt
+CMP R1,#0 : MOVEQ R1,#16
+
+LDRB R0,[mem,#crt_regs+5]
+AND R0,R0,#7 ; vertical adjust
+ADD R1,R1,R0
+
+MOV R1,R1,LSL#6 ; *64
+
+LDRB R0,[mem,#crt_regs+8]
+EOR R0,R0,#%1
+TST R0,#%1
+ADDEQ R1,R1,#&20 ; interlace
+
+SUB R0,mem,#512 ; sheila
+LDRB R0,[R0,#&20]
+TST R0,#%10000 ; clock speed
+
+MOVEQ R1,R1,LSL#1 ; fudge??? (to get 128 ticks per scanline in modes4/5)
+
+STR R1,[mem,#vsync_timer] ; time between start of screen and vsync
+
+SUB R0,mem,#512 ; sheila
+LDRB R1,[R0,#&20]
+TST R1,#%10 ; teletext?
+LDRNE R14,vsyncR14
+BNE vsync_mode7
+
+LDR R0,vsync_ticksdrawn
+CMP R0,#&10000
+BGE vsync_skip5
+
+LDRB R1,[mem,#vsync_fps_copy]
+CMP R1,#0
+BNE vsync_skip5
+
+LDRB R1,[mem,#firstline]
+CMP R1,#0
+MOVNE R1,#0
+STRNEB R1,[mem,#firstline]
+BLNE update_palette
+BLNE draw_first_line
+
+.loop
+BL draw_general_line
+CMP R0,#0
+BNE loop
+
+.vsync_skip5
+
+LDRB R0,[mem,#vsync_fps]
+STRB R0,[mem,#vsync_fps_copy]
+
+LDRB R0,[mem,#crt_regs+0] : ADD R0,R0,#1
+
+;LDRB R1,[mem,#crt_regs+8]
+;EOR R1,R1,#%1
+;TST R1,#%1
+;LDREQ R1,[mem,#screen_line]
+;CMPEQ R1,#0
+;BNE first_line_skip
+;ADDEQ R0,R0,#&20 ; add &20 to first line if interlace on
+
+;LDRB R1,[mem,#crt_regs+5]
+;AND R1,R1,#7 ; vertical adjust
+;ADD R0,R0,R1,LSL#6 ; add time for vertical adjust (???)
+
+;.first_line_skip
+SUB R1,mem,#512 ; sheila
+LDRB R1,[R1,#&20]
+TST R1,#%10000 ; clock speed
+
+MOVEQ R0,R0,LSL#1 ; fudge??? (to get 128 ticks per scanline in modes4/5)
+
+STR R0,vsync_ticksperscanline
+
+LDRB R0,[mem,#crt_regs+7] : AND R0,R0,#127
+LDRB R1,[mem,#crt_regs+4] : AND R1,R1,#127 : ADD R1,R1,#1
+SUB R0,R1,R0
+LDRB R1,[mem,#crt_regs+9] : AND R1,R1,#%11111 : ADD R1,R1,#1
+MUL R0,R1,R0
+LDRB R1,[mem,#crt_regs+5]
+ADD R0,R0,R1 ; this is now no of blank scan lines
+             ; at top of screen
+
+LDR R14,vsync_ticksperscanline
+MUL R1,R0,R14
+STR R1,vsync_ticksdrawn ; time to draw blank lines
+
+
+
+MOV R0,#1 : STRB R0,[mem,#firstline] ;BL draw_first_line
+
+
+LDR PC,vsyncR14
+
+.ldrb40
+
+LDRB R2,ldrb40_value
+BIC R0,R0,#%110000
+ORR R0,R0,R2
+MOV R1,#1
+STRB R1,ldrb40_tamper
+MOV PC,R14
+
+.ldrb40_update
+MOV R0,#%110000
+STRB R0,ldrb40_value
+MOV R0,#0
+STRB R0,ldrb40_tamper
+TST F,#1<<9 ; joystick
+MOVEQ PC,R14
+SWI &63F40 ; "XJoystick_Read"
+BVS ldrb40_mouse
+AND R1,R0,#&10000
+MOV R0,#1
+SWI &63F40 ; "XJoystick_Read"
+MOVVS R0,#0
+AND R0,R0,#&10000
+ADD R1,R1,R0,LSL#1
+AND R1,R1,#&30000
+MOV R1,R1,LSR#(16-4)
+
+EOR R2,R1,#%110000
+
+;ADD R13,mem,#&FE00
+;LDRB R0,[R13,#&40]
+;BIC R0,R0,#%110000
+STRB R2,ldrb40_value
+;ORR R0,R0,R2
+
+MOV PC,R14
+
+.ldrb40_tamper
+EQUD 0
+.ldrb40_value
+EQUD %110000
+
+.ldrb40_mouse
+MOV R13,R3
+SWI "OS_Mouse"
+MOV R3,R13
+
+MOV R2,R2,LSR#1
+RSB R2,R2,#3
+MOV R2,R2,LSL#4
+;ADD R13,mem,#&FE00
+;LDRB R0,[R13,#&40]
+;BIC R0,R0,#%110000
+STRB R2,ldrb40_value
+;ORR R0,R0,R2
+
+MOV PC,R14
+
+.write_ADC_status
+
+TST F,#1<<9 ; joystick
+MOVEQ PC,R14
+
+
+BIC R12,R0,#%11110000
+
+MOV R0,R0,LSR#1
+AND R0,R0,#%1 ; joystick number
+SWI &63F40 ; "XJoystick_Read"
+BVS write_ADC_mouse
+
+
+TST R12,#%1  ; left/right or up/down
+MOVEQ R0,R0,LSR#8
+ADD R0,R0,#127
+AND R0,R0,#&FF
+RSBEQ R0,R0,#255
+
+MOV R1,R0,LSR#2
+AND R1,R1,#%110000
+ORR R12,R12,R1
+ORR R12,R12,#%1000000
+
+SUB R1,mem,#512 ; sheila
+
+STRB R12,[R1,#&C0]
+STRB R12,[R1,#&18]
+
+STRB R0,[R1,#&C1]
+STRB R0,[R1,#&19]
+MOV R12,#0
+STRB R12,[R1,#&C2]
+STRB R12,[R1,#&1A]
+
+MOV PC,R14
+
+.write_ADC_mouse
+
+MOV R13,R3
+SWI "OS_Mouse"
+MOV R3,R13
+
+MOV R2,#1024
+SUB R2,R2,#1
+SUBS R0,R2,R0
+MOVLT R0,#0
+
+;CMP R0,#1024
+;MOVGE R0,#1024
+;SUBGE R0,R0,#1
+
+TST R12,#%1  ; left/right or up/down
+MOVNE R0,R1
+
+MOV R1,R0,LSL#4
+AND R1,R1,#%110000
+ORR R12,R12,R1
+ORR R12,R12,#%1000000
+
+SUB R1,mem,#512 ; sheila
+
+STRB R12,[R1,#&C0]
+STRB R12,[R1,#&18]
+
+MOV R12,R0,LSR#2
+STRB R12,[R1,#&C1]
+STRB R12,[R1,#&19]
+MOV R12,R0,LSL#6
+STRB R12,[R1,#&C2]
+STRB R12,[R1,#&1A]
+
+MOV PC,R14
+
+.timer1
+LDR R0,[mem,#T1R]
+ADD R1,R1,R0,LSR#8
+ADD R1,R1,#2 << 8
+STR R1,[mem,#T1]
+
+SUB R0,mem,#512 ; sheila
+
+LDRB R1,[R0,#&4B]
+ANDS R1,R1,#&C0
+BEQ timer1_00
+CMP R1,#&40
+BEQ timer1_40
+CMP R1,#&80
+BEQ timer1_80
+; fall through to timer1_C0
+.timer1_C0
+LDRB R1,[R0,#&40]
+EOR R1,R1,#&80
+STRB R1,[R0,#&40]
+
+LDRB R1,[mem,#T1mode]
+CMP R1,#0
+BEQ timer1_exit
+
+LDRB R1,[mem,#ifr]
+ORR R1,R1,#%01000000
+STRB R1,[mem,#ifr]
+
+.timer1_exit
+MOV PC,R14
+
+.timer1_80
+LDRB R1,[R0,#&40]
+ORR R1,R1,#&80
+STRB R1,[R0,#&40]
+
+LDRB R1,[mem,#T1mode]
+CMP R1,#0
+BEQ timer1_exit
+
+
+LDRB R1,[mem,#ifr]
+ORR R1,R1,#%01000000
+STRB R1,[mem,#ifr]
+
+MOV R1,#0
+STR R1,[mem,#T1mode]
+
+MOV PC,R14
+
+.timer1_40
+
+;LDRB R1,[mem,#T1mode]
+;CMP R1,#0
+;MOVEQ PC,R14
+
+LDRB R1,[mem,#ifr]
+ORR R1,R1,#%01000000
+STRB R1,[mem,#ifr]
+
+MOV PC,R14
+
+.timer1_00
+
+LDRB R1,[mem,#T1mode]
+CMP R1,#1
+BNE timer1_exit
+
+LDRB R1,[mem,#ifr]
+ORR R1,R1,#%01000000
+STRB R1,[mem,#ifr]
+
+;LDRB R1,[R0,#&40] ******** comented out only for 32 bit? why *****
+;EOR R1,R1,#&80    ******** comented out only for 32 bit? why *****
+;STRB R1,[R0,#&40] ******** comented out only for 32 bit? why *****
+
+MOV R2,#0
+STRB R2,[mem,#T1mode]
+MOV PC,R14
+
+.timer2
+BIC R1,R1,#&FF000000:STR R1,[mem,#T2]
+
+SUB R0,mem,#512
+LDRB R1,[R0,#&4B] ; acr
+ANDS R1,R1,#&20
+MOVNE PC,R14
+
+LDRB R0,[mem,#T2mode]
+CMP R0,#0
+MOVEQ PC,R14
+MOV R0,#0
+STRB R0,[mem,#T2mode]
+
+LDRB R1,[mem,#ifr]
+ORR R1,R1,#%00100000
+STRB R1,[mem,#ifr]
+
+;B printvsynctimer2
+MOV PC,R14
+
+.old_timer3        ;*********** 32bit change... was timer3 **********
+LDR R0,[mem,#T3R]
+ADD R1,R1,R0,LSR#8
+ADD R1,R1,#2 << 8
+STR R1,[mem,#T3]
+.old_timer3skip   ;************ new in 32 bit *****************
+
+
+;LDRB R1,[R0,#&6B] ; FE6B   *********** new 32bit, but commented out ***
+;EOR R1,R1,#&C0             *********** new 32bit, but commented out ***
+;TST R1,#&C0                *********** new 32bit, but commented out ***
+;LDRB R2,[R0,#&60] ; FE60   *********** new 32bit, but commented out ***
+;EOREQ R2,R2,#&80           *********** new 32bit, but commented out ***
+;ORRNE R2,R2,#&80           *********** new 32bit, but commented out ***
+;STRB R2,[R0,#&60] ; FE60   *********** new 32bit, but commented out ***
+
+
+;B printvsynctimer3      - 32bit change...was ...timer2
+MOV PC,R14
+
+.timer3
+LDR R0,[mem,#T3R]
+ADD R1,R1,R0,LSR#8
+ADD R1,R1,#2 << 8
+STR R1,[mem,#T3]
+
+SUB R0,mem,#512 ; sheila
+
+LDRB R1,[R0,#&6B]
+ANDS R1,R1,#&C0
+BEQ timer3_00
+CMP R1,#&40
+BEQ timer3_40
+CMP R1,#&80
+BEQ timer3_80
+; fall through to timer3_C0
+.timer3_C0
+LDRB R1,[R0,#&60]
+EOR R1,R1,#&80
+STRB R1,[R0,#&60]
+
+LDRB R1,[mem,#T3mode]
+CMP R1,#0
+BEQ timer3_exit
+
+LDRB R1,[mem,#ifr2]
+ORR R1,R1,#%01000000
+STRB R1,[mem,#ifr2]
+
+.timer3_exit
+MOV PC,R14
+
+.timer3_80
+LDRB R1,[R0,#&60]
+ORR R1,R1,#&80
+STRB R1,[R0,#&60]
+
+LDRB R1,[mem,#T3mode]
+CMP R1,#0
+BEQ timer3_exit
+
+
+LDRB R1,[mem,#ifr2]
+ORR R1,R1,#%01000000
+STRB R1,[mem,#ifr2]
+
+MOV R1,#0
+STR R1,[mem,#T3mode]
+
+MOV PC,R14
+
+.timer3_40 ; SKIRMISH
+
+;LDRB R1,[mem,#T3mode]
+;CMP R1,#0
+;MOVEQ PC,R14
+
+LDRB R1,[mem,#ifr2]
+ORR R1,R1,#%01000000
+STRB R1,[mem,#ifr2]
+
+MOV PC,R14
+
+.timer3_00
+
+LDRB R1,[mem,#T3mode]
+CMP R1,#1
+BNE timer3_exit
+
+LDRB R1,[mem,#ifr2]
+ORR R1,R1,#%01000000
+STRB R1,[mem,#ifr2]
+
+;LDRB R1,[R0,#&60] *********** 32bit commented out
+;EOR R1,R1,#&80    *********** 32bit commented out
+;STRB R1,[R0,#&60] *********** 32bit commented out
+
+MOV R2,#0
+STRB R2,[mem,#T3mode]
+MOV PC,R14
+
+.timer4
+BIC R1,R1,#&FF000000
+STR R1,[mem,#T4]
+
+SUB R0,mem,#512
+LDRB R1,[R0,#&6B] ; acr2
+ANDS R1,R1,#&20
+MOVNE PC,R14
+
+
+LDRB R1,[mem,#T4mode]
+CMP R1,#0
+MOVEQ PC,R14
+MOV R0,#0
+STRB R0,[mem,#T4mode]
+
+
+LDRB R1,[mem,#ifr2]
+ORR R1,R1,#%00100000 ; interrupt is from timer 4
+STRB R1,[mem,#ifr2]
+
+;B printvsynctimer4
+MOV PC,R14
+
+
+;.trace2
+;EQUD 0
+
+.reset
+;MOV R1,#1
+;STR R1,trace
+MOV R0,#15 : MOV R1,#0 : SWI "OS_Byte"
+MOV R0,#&10000
+SUB R0,R0,#4
+LDR R0,[mem,R0]
+MOV zpc,R0,LSL#16
+BIC F,F,#%1000 ; clear Decimal mode
+ORR F,F,#%100  ; set interrupt disable
+FNfetch2
+
+
+.exit
+MOV R0,#0
+.raw_exit2
+SWI "6502_Getkdata"
+.raw_exit
+STR time,[mem,#min]
+STR A,[mem,#a]
+STR X,[mem,#x]
+STR Y,[mem,#y]
+STR zSP,[mem,#sp]
+STR F,[mem,#f]
+STR zpc,[mem,#pc_store]
+LDR R13,return_addr
+LDMFD R13!,{R1-R12,PC}
+;MOV PC,R14
+
+
+.set_FE08
+LDRB R0,fe08_read
+BIC R0,R0,#&81
+STRB R0,fe08_read
+MOV PC,R14
+
+.fe08_read
+EQUB 0
+.fe08_write
+EQUB 0
+.fe09
+EQUB 0
+;.fe10
+;EQUB 0
+ALIGN
+.tbuffer
+EQUD 0
+
+.tape_fetch
+;LDR R0,[mem,#tapeR]
+;MOV R0,#&3400 ; 2000000/(1200/8)~=1200 baud
+MOV R0,#&6000
+ADDS R1,R1,R0
+MOVLE R1,#&6000
+
+LDRB R0,[mem,#fe10]
+TST R0,#&80 ; is *Motor on?
+MOVEQ R1,#&100000
+
+STR R1,[mem,#tape_count]
+
+MOVEQ PC,R14
+
+LDRB R1,[mem,#tape_handle]
+CMP R1,#0
+MOVEQ PC,R14
+
+.tape_get
+SWI "XOS_BGet"
+MOVVS R1,#0
+STRVSB R1,[mem,#tape_handle]
+MOVVS PC,R14
+
+BCC tape_skip10
+
+MOV R0,#1
+MOV R2,#0
+SWI "XOS_Args" ; rewind tape to start
+MOVVS R1,#0
+STRVSB R1,[mem,#tape_handle]
+MOVVS PC,R14
+
+.tape_skip10
+
+CMP R0,#&FF
+BNE not_FF
+SWIEQ "XOS_BGet"
+CMP R0,#&FF
+BEQ not_FF
+
+LDRB R1,fe08_read
+BIC R1,R1,#%100
+AND R0,R0,#%100
+ORR R1,R1,R0
+;ORR R1,R1,#&80 ; ??
+STRB R1,fe08_read
+
+CMP R0,#0
+
+;MOV R0,#&10000
+;STR R0,[mem,#tape_count]
+
+;B do_interrupt
+MOVEQ PC,R14
+
+ORR R1,R1,#&80
+STRB R1,fe08_read
+B do_interrupt
+
+.not_FF
+STRB R0,fe09
+
+
+LDRB R0,fe08_write
+TST R0,#&80 ; receive interrupt enable bit
+MOVEQ PC,R14
+
+LDRB R0,fe08_read
+ORR R0,R0,#&81
+STRB R0,fe08_read
+
+B do_interrupt
+;MOV PC,R14
+
+.readFE08
+;LDRB R1,tbuffer
+;LDRB R0,[mem,#&C2]
+;CMP R0,#1
+LDRB R0,fe08_read
+;CMPEQ R1,#ASC"*"
+;ORREQ R0,R0,#%100
+;BICNE R0,R0,#%100
+MOV PC,R14
+
+.readFE09
+LDRB R0,fe08_read
+BIC R0,R0,#&81
+STRB R0,fe08_read
+LDRB R0,fe09
+MOV PC,R14
+
+.writeFE08
+STRB R0,fe08_write
+MOV PC,R14
+
+.writeFE09
+MOV PC,R14
+
+.readFE10
+MOV R0,#&A2
+MOV PC,R14
+
+.writeFE10
+STRB R0,[mem,#fe10]
+MOV PC,R14
+
+.dummy
+MOV PC,R14
+
+;.ROMSEL
+;EQUD 0
+
+;.rom ; ROM paged in
+;EQUD 0
+
+;.ROMRAM ; which banks are RAM?
+;EQUD 0 : ;EQUD 0 : ;EQUD 0 : ;EQUD 0
+
+;.ACCCON
+;EQUD 0
+
+
+.swap_main_shadow
+
+STMFD mem,{R0-R2,R4-R11,R14}
+ADD R14,mem,#&3000
+SUB R13,mem,#&10000
+MOV R12,#&5000
+.swap_loop
+LDMIA R14,{R0-R2,R4-R5}
+;LDR R0,[R14,#0]
+;LDR R1,[R14,#4]
+;LDR R2,[R14,#8]
+;LDR R4,[R14,#12]
+;LDR R5,[R14,#16]
+
+LDMIA R13,{R6-R10}
+;LDR R6,[R13,#0]
+;LDR R7,[R13,#4]
+;LDR R8,[R13,#8]
+;LDR R9,[R13,#12]
+;LDR R10,[R13,#16]
+
+STMIA R13!,{R0-R2,R4-R5}
+;STR R0,[R13,#0]
+;STR R1,[R13,#4]
+;STR R2,[R13,#8]
+;STR R4,[R13,#12]
+;STR R5,[R13,#16]
+
+STMIA R14!,{R6-R10}
+;STR R6,[R14,#0]
+;STR R7,[R14,#4]
+;STR R8,[R14,#8]
+;STR R9,[R14,#12]
+;STR R10,[R14,#16]
+
+;ADD R14,R14,#20
+;ADD R13,R13,#20
+SUBS R12,R12,#20
+BHI swap_loop
+
+LDMEA mem,{R0-R2,R4-R11,R14}
+B swap_exit
+
+]
+IF master THEN
+[OPTp
+.strb_rom_ret2 ; between C000 AND E000
+LDRB R2,[mem,#ACCCON]
+TST R2,#%1000
+MOVEQ PC,R14
+;STRNEB R0,[mem,R1]
+MOV R2,#pagetable
+LDRB R2,[R2,R1,LSR#12]
+STRB R0,[R1,R2,LSL#12]
+MOV PC,R14
+]
+ENDIF
+[OPTp
+
+.acccon
+]
+IF NOTmaster THEN [OPTp:MOV PC,R14:]
+[OPTp
+LDRB R1,[mem,#ACCCON]
+STRB R0,[mem,#ACCCON]
+EOR R2,R0,R1
+
+TST R2,#%1 ; main/shadow to be displayed
+STRNEB R2,[mem,#tamper]
+
+MOV R12,#pagetable
+
+
+;TST R2,#%100 ; main/shadow to be paged in
+;;;;;BNE swap_main_shadow
+;MOVEQ R13,#&A0
+;MOVNE R13,#&8D
+;STRB R13,[R12,#3]
+;STRB R13,[R12,#4]
+;STRB R13,[R12,#5]
+;STRB R13,[R12,#6]
+;STRB R13,[R12,#7]
+
+
+.swap_exit
+
+;ANDS R2,R2,#%1000 ; filing system RAM
+
+TST R0,#%1000
+MOVEQ R13,#&A0
+MOVNE R13,#&95-&C
+STRB R13,[R12,#&C]
+STRB R13,[R12,#&D]
+MOV PC,R14
+
+
+MOVEQ PC,R14
+
+STMFD mem,{R0-R2,R4-R9,R14}
+
+TST R1,#%1000
+BEQ os_out
+;BNE os_in
+
+.os_in ; RJW
+LDR R12,roms_addr
+ADD R12,R12,#16*16*1024 ; 17th ROM = OS3.2
+MOV R13,#&2000
+SUB R2,mem,#&B000
+ADD mem,mem,#&C000
+.os_in_loop
+LDMIA mem, {R0,R1,R4,R5,R6,R7,R8,R9}
+STMIA R2!, {R0,R1,R4,R5,R6,R7,R8,R9}
+LDMIA R12!,{R0,R1,R4,R5,R6,R7,R8,R9}
+STMIA (mem)!,{R0,R1,R4,R5,R6,R7,R8,R9}
+SUBS R13,R13,#4*8
+BGT os_in_loop
+SUB mem,mem,#&E000
+LDMEA mem,{R0-R2,R4-R9,PC}
+
+.os_out ; RJW
+MOV R13,#&2000
+SUB R2,mem,#&B000
+ADD mem,mem,#&C000
+.os_out_loop
+LDMIA R2!,{R0,R1,R4,R5,R6,R7,R8,R9}
+STMIA (mem)!,{R0,R1,R4,R5,R6,R7,R8,R9}
+SUBS R13,R13,#4*8
+BGT os_out_loop
+SUB mem,mem,#&E000
+LDMEA mem,{R0-R2,R4-R9,PC}
+
+.strb8000      ; greater than 8000
+]
+IF master THEN
+[OPTp
+CMP R1,#&E000
+BGE strb_rom_ret
+CMP R1,#&C000
+BGE strb_rom_ret2
+CMP R1,#&9000
+BGE strb_rom
+]
+ELSE
+[OPTp
+CMP R1,#&C000
+BGE strb_rom_ret
+]
+ENDIF
+[OPTp
+
+LDRB R12,[mem,#rom]
+TST R12,#&80
+BEQ strb_rom
+
+;SUB R13,mem,#(&8000+&B000) ; 4k Private RAM
+;STRB R0,[R13,R1]
+]
+IF master THEN
+[OPTp
+MOV R2,#pagetable
+LDRB R2,[R2,R1,LSR#12]
+STRB R0,[R1,R2,LSL#12] ; private RAM
+]
+ELSE
+[OPTp
+STRB R0,[mem,R1]
+]
+ENDIF
+[OPTp
+MOV PC,R14
+
+.strb_rom
+]
+IF master THEN
+[OPTp
+SUB R12,mem,#-ROMRAM
+LDRB R13,[mem,#rom]
+AND R13,R13,#%1111
+LDRB R13,[R12,R13]
+CMP R13,#0
+MOVNE PC,R14
+;STREQB R0,[mem,R1]
+MOV R2,#pagetable
+LDRB R2,[R2,R1,LSR#12]
+STRB R0,[R1,R2,LSL#12]
+MOV PC,R14
+;B strb_rom_ret
+]
+ELSE
+[OPTp
+SUB R12,mem,#-ROMRAM
+LDRB R13,[mem,#rom]
+AND R13,R13,#%1111
+LDRB R13,[R12,R13]
+CMP R13,#0
+STREQB R0,[mem,R1]
+MOV PC,R14
+;B strb_rom_ret
+]
+ENDIF
+[OPTp
+
+.romsel
+LDRB R12,[mem,#ROMSEL_ON]
+CMP R12,#0
+MOVNE PC,R14
+
+]
+IF master THEN
+[OPTp
+AND R0,R0,#%10001111
+STRB R0,[mem,#rom]
+
+MOV R12,#pagetable
+
+MOV R1,R0,LSL#2 ; multiply by 4
+ADD R1,R1,#&44 ; &4C-8
+STRB R1,[R12,#&8]
+STRB R1,[R12,#&9]
+STRB R1,[R12,#&A]
+STRB R1,[R12,#&B]
+
+TST R0,#%10000000
+;MOVEQ R13,#&A0 ; this will need to change
+MOVNE R13,#&95
+;STRB R13,[R12,#&8]
+STRNEB R13,[R12,#&8]
+
+MOV PC,R14
+]
+ELSE
+[OPTp
+
+LDRB R1,[mem,#rom]
+
+AND R0,R0,#%1111
+CMP R0,R1 : MOVEQ PC,R14 ; WAR (used to) need this commented out!?!
+
+LDR R12,roms_addr
+AND R2,R0,#&F ; socket number
+LDRB R1,[mem,#rom]
+AND R1,R1,#&F
+STRB R0,[mem,#rom]
+SUB R13,mem,#-ROMRAM
+LDRB R13,[R13,R1]
+CMP R13,#0 ; is the bank being paged out RAM?
+BNE romsel2
+
+TST R0,#%10000000 ; private RAM mapped in?
+MOVEQ R13,#&8000
+MOVNE R13,#&9000
+AND R0,R0,#&F
+
+ADD R2,R12,R1,LSL#14
+ADDNE R2,R2,#&1000
+ADD R12,R12,R0,LSL#14 ; R0*16*1024
+ADDNE R12,R12,#&1000
+ADR R1,romsel_loop_temp
+STMIA R1,{R0,R4-R8,R14}
+ADD mem,mem,R13
+RSB R13,R13,#&C000
+.romsel_loop
+LDMIA mem,{R0,R1,R4,R5,R6,R7,R8,R14}
+STMIA R2!,{R0,R1,R4,R5,R6,R7,R8,R14}
+LDMIA R12!,{R0,R1,R4,R5,R6,R7,R8,R14}
+STMIA (mem)!,{R0,R1,R4,R5,R6,R7,R8,R14}
+SUBS R13,R13,#4*8
+BNE romsel_loop
+SUB mem,mem,#&C000
+ADR R1,romsel_loop_temp
+LDMIA R1,{R0,R4-R8,PC}
+.romsel_loop_temp
+EQUD 0:EQUD 0:EQUD 0:EQUD 0
+EQUD 0:EQUD 0:EQUD 0:EQUD 0
+
+.romsel_empty
+ADD R13,R2,R2,LSL#8
+ADD R13,R13,R13,LSL#16
+ADD R0,mem,#&8000
+STR R13,[R0,#0]
+STR R13,[R0,#4]
+STR R13,[R0,#8]
+STR R13,[R0,#12]
+MOV PC,R14
+
+.romsel2
+
+SUB R13,mem,#-ROMRAM
+LDRB R13,[R13,R2]
+CMP R13,#2 ; is the bank being paged out empty?
+BEQ romsel_empty
+
+TST R0,#%10000000 ; private RAM mapped in?
+MOVEQ R13,#&8000
+MOVNE R13,#&9000
+AND R0,R0,#&F
+
+
+ADD R12,R12,R0,LSL#14 ; R0*16*1024
+ADDNE R12,R12,#&1000
+ADD mem,mem,R13
+RSB R13,R13,#&C000
+ADR R1,romsel_loop_temp
+STMIA R1,{R0,R4-R8,R14}
+.romsel2_loop
+LDMIA  R12 !,{R0,R1,R4,R5,R6,R7,R8,R14}
+STMIA (mem)!,{R0,R1,R4,R5,R6,R7,R8,R14}
+;LDR R1,[R12],#4
+;STR R1,[mem],#4 ; store byte from ROM in main memory map
+SUBS R13,R13,#4*8
+BNE romsel2_loop
+SUB mem,mem,#&C000
+ADR R1,romsel_loop_temp
+LDMIA R1,{R0,R4-R8,PC}
+]
+ENDIF
+[OPTp
+
+
+
+
+.crt
+SUB R1,mem,#512 ; sheila
+LDRB R12,[R1,#0]
+AND R12,R12,#%11111
+CMP R12,#17
+MOVHI PC,R14
+;ADR R13,crt_regs
+SUB R13,mem,#-crt_regs
+LDRB R1,[R13,R12]
+CMP R1,R0 : MOVEQ PC,R14 ; no change
+STRB R0,[R13,R12]
+ADD PC,PC,R12,LSL#2
+MOV R0,R0 ; padding for pipeline
+MOV PC,R14                    ; reg 0
+B new_horizvert               ; reg 1
+MOV PC,R14                    ; reg 2
+MOV PC,R14                    ; reg 3
+MOV PC,R14                    ; reg 4
+MOV PC,R14                    ; reg 5
+B new_horizvert               ; reg 6
+MOV PC,R14                    ; reg 7
+MOV PC,R14                    ; reg 8
+MOV PC,R14                    ; reg 9
+B cursor_start                ; reg 10
+B cursor_end                  ; reg 11
+B crt12                       ; reg 12
+B crt13                       ; reg 13
+B cursor_changed              ; reg 14
+B cursor_changed              ; reg 15
+MOV PC,R14                    ; reg 16
+MOV PC,R14                    ; reg 17
+
+.cursor_changed
+MOV R0,#1
+STRB R0,[mem,#cursor_tamper]
+MOV PC,R14
+
+.new_horizvert
+MOV R13,#1
+STR R13,[mem,#tamper]
+SUB R12,R1,R0
+CMP R12,#2
+MOVLE PC,R14
+MOV R12,#255 : STRB R12,[mem,#lastmode]
+MOV PC,R14
+
+.crt12
+;CMP R0,#%0110
+;MOVLT R0,#%110
+;STRB R0,[R13,R12] these lines removed to make Nightshade work
+;                  (why were they put in though....)
+.crt13
+
+MOV R13,#1
+STR R13,[mem,#tamper]
+B recalc_wrap
+
+.cursor_start
+\LDRB R1,[mem,#cursor_on]
+\CMP R1,#0:\MOVNE PC,R14
+TST F,#1 << 10 ; cursor on?
+MOVEQ PC,R14
+LDRB R1,[mem,#crt_regs+11]
+AND R1,R1,#%11111
+AND R2,R0,#%11111
+CMP R2,R1
+BGT blank_cursor
+
+EOR R0,R0,#%100000
+TST R0,#%1100000
+BEQ blank_cursor
+B define_cursor
+
+.cursor_end
+\LDRB R1,[mem,#cursor_on]
+\CMP R1,#0:\MOVNE PC,R14
+TST F,#1 << 10 ; cursor on?
+MOVEQ PC,R14
+AND R1,R0,#%11111
+LDRB R2,[mem,#crt_regs+10]
+AND R2,R2,#%11111
+CMP R2,R1
+BGT blank_cursor
+B define_cursor
+;MOV PC,R14
+
+.link
+EQUD 0
+
+.caps_lock
+AND R0,R0,#%1000
+MOV R1,R0,LSL#1
+MOV R0,#202
+MOV R2,#%11101111
+SWI "OS_Byte"
+MOV R0,#118
+SWI "OS_Byte"
+MOV PC,R14
+
+.latch
+;ORR R0,R0,#%110000
+;STRB R0,[mem,R1] ; no fire buttons
+ANDS R2,R0,#%111
+
+;RJW
+;CMP R2,#0
+TSTEQ F,#1<<12 ; sound on?
+BEQ sound_latch
+CMP R2,#3
+BEQ latch_keyb
+CMP R2,#6
+BEQ caps_lock
+LDRB R12,[mem,#crt_regs+19]
+CMP R2,#4
+ANDEQ R13,R0,#%1000
+BICEQ R12,R12,#%1
+ORREQ R12,R12,R13,LSR#3
+CMP R2,#5
+ANDEQ R13,R0,#%1000
+BICEQ R12,R12,#%10
+ORREQ R12,R12,R13,LSR#2
+STRB R12,[mem,#crt_regs+19]
+
+.recalc_wrap
+LDRB R12,[mem,#crt_regs+19]
+ANDS R12,R12,#%11
+MOVNE R13,#&5800
+MOVEQ R13,#&4000
+CMP R12,#%10
+MOVEQ R13,#&3000
+CMP R12,#%01
+MOVEQ R13,#&6000
+
+LDRB R12,[mem,#crt_regs+13]
+LDRB R2,[mem,#crt_regs+12]
+AND R2,R2,#%1111
+ADD R12,R12,R2,LSL#8
+
+CMP R13,R12,LSL#3
+MOVGT R13,R12,LSL#3
+
+SUB R12,mem,#512 ; sheila
+LDRB R12,[R12,#&20]
+
+TST R12,#%10 ; teletext?
+MOVNE R13,#&7C00
+
+;AND F,F,#&FF
+BIC F,F,#&FF000000
+BIC F,F,#&FF0000
+ORR F,F,R13,LSL#16
+;STR R13,wrap_addr
+MOV PC,R14
+
+
+.latch_keyb
+
+AND R2,R0,#%1000
+STRB R2,key_write_ena
+CMP R2,#%1000
+MOVNE PC,R14
+MOV R2,#0
+STRB R2,column_counter
+MOV PC,R14
+
+.userport_writeDDR
+MOV R2,R0
+
+SUB R0,mem,#&200
+STRB R2,[R0,#&62]
+
+MOV R0,#151
+MOV R1,#&62
+SWI "XOS_Byte"
+MOV PC,R14
+
+.userport_tmp
+EQUD 0
+
+.userport_writedata
+STR R0,userport_tmp
+
+MOV R2,R0
+MOV R0,#151
+MOV R1,#&60
+SWI "XOS_Byte"
+MOVVC PC,R14
+
+MOV R0,#2
+MOV R1,#0
+MOV R2,#%11011111
+SWI &62EC1 ; "XParallel_Op" ; clear DIR bit (output) ******* 32bit uses number
+
+MOV R0,#1
+LDR R1,userport_tmp
+SWI &62EC1 ; "XParallel_Op" ; write data ******* 32bit uses number
+
+MOV PC,R14
+
+.userport_readDDR
+MOV R2,R0
+MOV R0,#150
+MOV R1,#&62
+SWI "XOS_Byte"
+MOVVC R0,R2
+SUBVS R0,mem,#&200
+LDRVSB R0,[R0,#&62]
+MOV PC,R14
+
+.userport_iopod
+EQUD 0
+.userport_bidir
+EQUD 0
+
+.userport_readdata
+LDR R2,userport_iopod
+CMP R2,#0
+BNE skip_iopod
+
+MOV R2,R0
+MOV R0,#150
+MOV R1,#&60
+SWI "XOS_Byte"
+MOVVC R0,R2
+MOVVS R2,#1:STRVS R2,userport_iopod
+BVC fe60_pokebit7
+;MOVVC PC,R14
+
+.skip_iopod
+LDR R2,userport_bidir
+CMP R2,#0
+MOVNE R0,#0
+BNE fe60_pokebit7
+
+
+MOV R0,#2
+MOV R1,#%00100000
+MOV R2,#%11011111
+SWI &62EC1 ; "XParallel_Op" ; set DIR bit (input) ******* 32bit uses number
+MOVVS R2,#1:STRVS R2,userport_bidir
+
+MOV R0,#0
+SWI &62EC1 ; "XParallel_Op" ; read data ******* 32bit uses number
+MOVVS R2,#1:STRVS R2,userport_bidir
+
+MOVVC R0,R1
+MOVVS R0,#0
+
+.fe60_pokebit7
+SUB R1,mem,#512 ; sheila
+;LDRB R2,[R1,#&6B] ; ACR
+;TST R2,#1<<7
+;MOVEQ PC,R14
+
+LDRB R2,[R1,#&60]
+AND R2,R2,#1<<7
+AND R0,R0,#%01111111
+ORR R0,R0,R2
+
+MOV PC,R14
+
+
+
+.printer_write
+SWI &102
+SWI &101
+SWI "OS_WriteC"
+MOV R0,#152 : MOV R1,#3
+SWI "OS_Byte" ; check printer buffer
+BCS printer_on
+MOV R0,#21 : MOV R1,#3
+SWI "OS_Byte" ; flush buffer
+.printer_on
+SWI &103
+LDRB R0,[mem,#ifr2]
+ORR R0,R0,#%10
+STRB R0,[mem,#ifr2]
+MOV PC,R14
+
+.regB_41
+
+SUB R12,mem,#512 ; sheila
+LDRB R1,[R12,#&C] ; PCR
+LDRB R2,[mem,#ifr]
+AND R13,R1,#%1110
+TEQ R13,   #%0010
+TEQNE R13, #%0110
+BICEQ R2,R2,#%11
+BICNE R2,R2,#%10
+STRB R2,[mem,#ifr]
+.regB_4F
+SUB R12,mem,#512 ; sheila
+
+STRB R0,sound_data            ; keep a copy in sound_data
+
+LDRB R2,[R12,#&43] ; R2=data direction
+AND R1,R0,R2
+;MOV R1,R0
+ANDS R0,R1,#%01110000 : MOVNE R0,#0 : STRNEB R0,column_counter
+;EOR R1,R1,#&FF
+;SWI "6502_Getkeyaddr"
+LDR R0,[mem,#key_addr]
+LDRB R2,[R0] ; shift pressed?
+CMP R2,#0
+ADDNE R0,R0,#256
+
+AND R2,R1,#&F
+CMP R2,#&F ; column counter disabled?
+BEQ disable_column_counter
+LDRB R2,column_counter
+CMP R2,#&F
+BEQ check_row
+
+;BIC R1,R1,#&80
+LDRB R0,[R0,R1]
+;EOR R0,R0,R1,LSR#7 ; ************
+;EOR R0,R0,#1
+;CMP R0,#0 : ;MOVEQ R1,#0
+ORR R0,R1,R0,LSL#7
+;MOV R0,R1,LSL#7
+;MOV R0,R1
+;ADD R0,R1,R1,LSL#7
+
+;MOV R0,#&81
+;MOV R2,#&FF
+;SWI "OS_Byte"
+;CMP R0,#98 ; space
+;CMP R1,#&FF
+;MOVEQ R0,#&80
+;MOVNE R0,#0
+STRB R0,[R12,#&4F]
+STRB R0,[R12,#&41]
+MOV PC,R14
+
+.column_counter
+EQUD 0
+.key_write_ena
+EQUD 0
+
+.disable_column_counter
+STRB R2,column_counter
+.check_row
+AND R1,R1,#%00001111
+MOV R13,#0
+;SWI "6502_Getkeyaddr"
+LDR R0,[mem,#key_addr]
+LDRB R2,[R0] ; shift pressed?
+CMP R2,#0
+ADDNE R0,R0,#256
+
+.row_loop
+LDRB R2,[R0,R1]
+ORR R13,R13,R2
+ADD R1,R1,#%10000
+TST R1,#%1110000
+BNE row_loop
+ANDS R12,R13,#%1
+LDRNEB R13,[mem,#ifr]
+ORRNE R13,R13,R12
+STRNEB R13,[mem,#ifr]
+SUB R0,mem,#512 ; sheila
+LDRB R1,[R0,#&4F]
+BIC R1,R1,#&80
+ORR R1,R1,R12,LSL#7
+STRB R1,[R0,#&4F]
+STRB R1,[R0,#&41]
+MOV PC,R14
+
+.interrupt_flags
+LDRB R2,[mem,#ifr]
+BIC R2,R2,R0
+STRB R2,[mem,#ifr]
+MOV PC,R14
+
+
+.interrupt_enable
+LDRB R1,[mem,#ier]
+TST R0,#&80
+BICEQ R1,R1,R0
+ORRNE R1,R1,R0
+ORR R1,R1,#&80 ; &81
+STRB R1,[mem,#ier]
+;TST time,#%1
+;SUBNE time,time,#1
+MOV PC,R14
+
+.interrupt_flags2
+LDRB R2,[mem,#ifr2]
+BIC R2,R2,R0
+STRB R2,[mem,#ifr2]
+MOV PC,R14
+
+
+.interrupt_enable2
+LDRB R1,[mem,#ier2]
+TST R0,#&80
+BICEQ R1,R1,R0
+ORRNE R1,R1,R0
+ORR R1,R1,#&80 ; &81
+STRB R1,[mem,#ier2]
+MOV PC,R14
+
+.flash
+
+STR R14,fe20_R14
+
+LDRB R12,[mem,#fe20]
+STRB R0,fe20_temp
+
+TST R0,#%10 ; teletext
+BNE fe20_skip
+TST R12,#%10 ; teletext
+BNE fe20_skip
+
+AND R1,R12,#%11100
+AND R2,R0, #%11100
+CMP R1,R2
+BLNE update_midscreen
+
+.fe20_skip
+LDRB R12,[mem,#fe20]
+LDRB R0,fe20_temp
+LDR R14,fe20_R14
+
+AND R1,R12,#%11100000
+AND R2,R0, #%11100000
+CMP R1,R2
+MOVNE R2,#1
+STRNEB R2,[mem,#cursor_tamper]
+
+STRB R0,[mem,#fe20]
+
+TST R0,#%1
+MOVEQ R0,#9
+MOVNE R0,#10
+LDRB R1,last_flash   ;********** new for 32 bit
+CMP R0,R1            ;********** new for 32 bit
+STRNEB R0,last_flash ;********** new for 32 bit
+MOVNE R1,#0          ;******* NE for 32bit, was AL previously
+SWINE "OS_Byte"      ;******* NE for 32bit, was AL previously
+
+
+;B poke_updatepixelV ; includes MOV PC,R14 - ***** 32bit commented out this
+MOV PC,R14           ; *********** 32bit uncommented this
+
+.last_flash ; ********** new for 32bit?
+EQUD 0      ; ********** new for 32bit?
+
+.fe20_temp
+EQUD 0
+.fe20_R14
+EQUD 0
+
+;.crt_regs
+;EQUD 0
+;EQUD 0
+;EQUD 0
+;EQUD 0
+;EQUD 0
+
+; include the sound code here contained in the Sound library
+FNsound_latch
+
+
+FNscreen
+
+]
+IF HWScroll THEN [OPTp:FNhardwarescroll:]
+[OPTp
+
+
+.FFpage
+;SUB time,time,#1
+MOV PC,R14
+
+.oswritec
+MOV R0,A,LSR#24
+SWI "XOS_WriteC"
+B opcode(&60) ; rts
+
+.osnewline
+SWI "XOS_NewLine"
+B opcode(&60) ; rts
+
+.osbput
+MOV R0,A,LSR#24
+MOV R1,Y,LSR#24
+SWI "XOS_BPut"
+BVS swi_error
+B opcode(&60) ; rts
+
+.osbget
+MOV R0,A,LSR#24
+MOV R1,Y,LSR#24
+SWI "XOS_BGet"
+BVS swi_error
+MOV A,R0,LSL#24
+FNsetupC
+B opcode(&60) ; rts
+
+.swi_error
+ADD mem,mem,#&100
+ADD mem,mem,#&002
+MOV R1,#0 ; BRK
+STRB R1,[mem,#-2]
+LDRB R1,[R0] ; error no
+STRB R1,[mem,#-1]
+ADD R0,R0,#4
+MOV R14,#0
+
+.swi_err_loop
+LDRB R13,[R0,R14]
+CMP R13,#0
+;MOV R13,#ASC"A"
+STRB R13,[mem,R14]
+ADD R14,R14,#1
+MOVEQ R14,#255
+CMP R14,#253
+BLE swi_err_loop
+
+MOV zpc,#&100 << 16
+SUB mem,mem,#&100
+SUB mem,mem,#&002
+FNfetch2
+
+.return_ROMSEL
+LDRB R0,[mem,#rom]
+MOV PC,R14
+
+.return_ACCCON
+LDRB R0,[mem,#ACCCON]
+MOV PC,R14
+
+
+.strb_rom_ret
+
+.sheila
+SUBS R2,R1,#&FC00
+MOVLT PC,R14
+SUBS R2,R2,#&200
+SUBLT time,time,#2
+MOVLT PC,R14
+SUBS R2,R2,#&100
+MOVGE PC,R14
+;BGE FFpage
+
+;TST time,#%1
+;SUBNE time,time,#1
+;SUBEQ time,time,#2
+
+;SUB time,time,#2
+
+;STRB R0,[mem,R1]
+SUB R2,mem,#&10000:STRB R0,[R2,R1]
+
+AND R2,R1,#&FF
+FNADR(1,sheila_timingtable)
+LDRB R1,[R1,R2]
+SUB time,time,R1
+;ADR R1,sheila_writetab
+LDR PC,[PC,R2,LSL#2]
+EQUD 0 ; padding for pipeline
+.sheila_writetab
+; 0-F
+EQUD dummy
+EQUD crt
+EQUD dummy
+EQUD crt
+EQUD dummy
+EQUD crt
+EQUD dummy
+EQUD crt
+EQUD writeFE08
+EQUD writeFE09
+FNequd(6,dummy)
+; 10-17
+EQUD writeFE10
+FNequd(7,dummy)
+; 18-1F
+EQUD write_ADC_status
+FNequd(7,dummy)
+; 20-2F
+EQUD flash
+EQUD palette
+FNequd(14,dummy)
+; 30-3F
+FNequd(4,romsel)
+EQUD acccon
+FNequd(11,romsel)
+; 40-4F
+EQUD latch
+EQUD regB_41
+EQUD dummy
+EQUD dummy
+EQUD writeT1low_latch
+EQUD writeT1high_count
+EQUD writeT1low_latch
+EQUD writeT1high_latch
+EQUD writeT2low_latch
+EQUD writeT2high_count
+EQUD dummy
+EQUD dummy
+EQUD dummy
+EQUD interrupt_flags
+EQUD interrupt_enable
+EQUD regB_4F
+; 50-5F
+EQUD latch
+EQUD regB_41
+EQUD dummy
+EQUD dummy
+EQUD writeT1low_latch
+EQUD writeT1high_count
+EQUD writeT1low_latch
+EQUD writeT1high_latch
+EQUD writeT2low_latch
+EQUD writeT2high_count
+EQUD dummy
+EQUD dummy
+EQUD dummy
+EQUD interrupt_flags
+EQUD interrupt_enable
+EQUD regB_4F
+; 60-7F
+]
+IF IO_Podule% THEN
+[OPTp
+FNequd(&20,IOpodule_Write)
+]
+ELSE
+[OPTp
+EQUD userport_writedata
+EQUD printer_write
+EQUD userport_writeDDR
+EQUD dummy
+EQUD writeT3low_latch
+EQUD writeT3high_count
+EQUD writeT3low_latch
+EQUD writeT3high_latch
+EQUD writeT4low_latch
+EQUD writeT4high_count
+EQUD dummy
+EQUD writeACR2
+EQUD dummy
+EQUD interrupt_flags2
+EQUD interrupt_enable2
+EQUD printer_write
+
+EQUD userport_writedata
+EQUD printer_write
+EQUD userport_writeDDR
+EQUD dummy
+EQUD writeT3low_latch
+EQUD writeT3high_count
+EQUD writeT3low_latch
+EQUD writeT3high_latch
+EQUD writeT4low_latch
+EQUD writeT4high_count
+EQUD dummy
+EQUD dummy
+EQUD dummy
+EQUD interrupt_flags2
+EQUD interrupt_enable2
+EQUD printer_write
+]
+ENDIF
+
+[OPTp
+; 80-BF
+FNequd(&40,dummy)
+; C0-CF
+EQUD write_ADC_status
+FNequd(15,dummy)
+; D0-FF
+FNequd(&30,dummy)
+
+.sheila_timingtable
+FNequd(8,&02020202)
+FNequd(2,0)
+EQUD &02020202
+FNequd(5,0)
+FNequd(24,&02020202)
+FNequd(24,0)
+.XXsheila_timingtable2 ; not correct
+;FNequd(8,&03030303)
+;EQUD 0
+;EQUD &01010101
+;EQUD &03030303
+;FNequd(5,0)
+;FNequd(24,&03030303)
+;FNequd(24,0)
+
+.ldrb_FFpage
+;SUB time,time,#1
+MOV PC,R14
+
+.ldrb8000 ; greater than 8000
+
+CMP R1,#&FE00
+BHS ldrb_sheila
+]
+IF master
+[OPTp
+MOV R0,#pagetable
+LDRB R0,[R0,R1,LSR#12]
+LDRB R0,[R1,R0,LSL#12]
+]
+ELSE
+[OPTp
+LDRB R0,[mem,R1]
+]
+ENDIF
+[OPTp
+MOV PC,R14
+
+
+;MOV R1,R1,LSR#16
+]
+IF master THEN
+[OPTp
+.ldrb16_8000 ; greater than 8000
+
+CMP R1,#&FE00 << 16
+BHS ldrb16_sheila
+
+;LDRB R0,[mem,R1,LSR#16]
+MOV R0,#pagetable
+LDRB R0,[R0,R1,LSR#28]
+MOV R0,R0,LSL#12
+LDRB R0,[R0,R1,LSR#16]
+MOV PC,R14
+
+.ldrb16_screen
+CMP R1,#&8000 << 16
+BHS ldrb16_8000
+
+LDRB R12,[mem,#ACCCON]
+
+CMP zpc,#&C000 << 16
+MOVLT R13,R12,LSR#1
+MOVGE R13,R12
+CMP zpc,#&E000 << 16
+MOVGE R13,R12,LSR#1    ; now bit 1 of R13 is what
+                       ; we must look at
+
+MOV R2,#pagetable
+LDRB R2,[R2,R1,LSR#28]
+TST R13,#%10
+MOVNE R2,#&8D
+MOV R2,R2,LSL#12
+LDRB R0,[R2,R1,LSR#16]
+MOV PC,R14
+]
+ELSE
+[OPTp
+.ldrb16_screen
+CMP R1,#&FE00 << 16
+BHS ldrb16_sheila
+
+LDRB R0,[mem,R1,LSR#16]
+MOV PC,R14
+]
+ENDIF
+
+IF master THEN
+[OPTp
+
+.ldrb_screen
+.ldrb3000 ; greater than 3000
+
+CMP R1,#&8000
+BHS ldrb8000
+
+LDRB R12,[mem,#ACCCON]
+
+CMP zpc,#&C000 << 16
+MOVLT R13,R12,LSR#1
+MOVGE R13,R12
+CMP zpc,#&E000 << 16
+MOVGE R13,R12,LSR#1    ; now bit 1 of R13 is what
+                       ; we must look at
+
+;CMP zpc,#&C000 << 16
+;MOVLT R13,#0
+;EORGE R13,R12,R12,LSR#1
+;CMP zpc,#&E000 << 16
+;MOVGE R13,#0 ; now look at bit 1 of R13
+
+;TST R13,#%10
+;SUBNE R13,mem,#(&3000+&10000) ; shadow screen memory
+;LDRNEB R0,[R13,R1]
+;LDREQB R0,[mem,R1]
+;MOV PC,R14
+
+MOV R2,#pagetable
+LDRB R2,[R2,R1,LSR#12]
+TST R13,#%10
+MOVNE R2,#&8D
+LDRB R0,[R1,R2,LSL#12]
+MOV PC,R14
+]
+ELSE
+[OPTp
+.ldrb_screen
+.ldrb3000 ; greater than 3000
+CMP R1,#&FE00
+BHS ldrb_sheila
+LDRB R0,[mem,R1]
+MOV PC,R14
+]
+ENDIF
+
+[OPTp
+;FNequd(64,0)
+
+.ldrb16_sheila
+MOV R12,R1,LSR#16
+B ldrb_sheila2
+
+.ldrb_sheila
+MOV R12,R1
+
+.ldrb_sheila2
+]
+IF master THEN
+[OPTp
+MOV R0,#pagetable
+LDRB R0,[R0,R12,LSR#12]
+LDRB R0,[R12,R0,LSL#12]
+]
+ELSE
+[OPTp
+LDRB R0,[mem,R12]
+]
+ENDIF
+[OPTp
+
+SUBS R2,R12,#&FC00
+MOVLT PC,R14
+SUBS R2,R2,#&200 ; FRED & JIM
+SUBLT time,time,#2
+MOVLT PC,R14
+SUBS R2,R2,#&100
+BGE ldrb_FFpage
+
+
+SUB R2,mem,#&10000:LDRB R0,[R2,R12]
+
+;SUB time,time,#1
+
+AND R2,R12,#&FF
+ADR R1,sheila_timingtable
+LDRB R1,[R1,R2]
+SUB time,time,R1
+;ADR R1,sheila_readtab
+LDR PC,[PC,R2,LSL#2]
+EQUD 0 ; padding for pipeline
+.sheila_readtab
+; 0-F
+FNequd(8,dummy)
+EQUD readFE08
+EQUD readFE09
+FNequd(6,dummy)
+; 10-2F
+EQUD readFE10
+FNequd(&1F,dummy)
+; 30-3F
+FNequd(4,return_ROMSEL)
+FNequd(4,return_ACCCON)
+FNequd(8,dummy)
+; 40-4F
+EQUD ldrb40
+EQUD ldrb41
+EQUD dummy
+EQUD dummy
+EQUD readT1low_count
+EQUD readT1high_count
+EQUD readT1low_latch
+EQUD readT1high_latch
+EQUD readT2low_count
+EQUD readT2high_count
+EQUD dummy
+EQUD dummy
+EQUD dummy
+EQUD read_ifr
+EQUD read_ier
+EQUD ldrb4F
+; 50-5F
+EQUD ldrb40
+EQUD ldrb41
+EQUD dummy
+EQUD dummy
+EQUD readT1low_count
+EQUD readT1high_count
+EQUD readT1low_latch
+EQUD readT1high_latch
+EQUD readT2low_count
+EQUD readT2high_count
+EQUD dummy
+EQUD dummy
+EQUD dummy
+EQUD read_ifr
+EQUD read_ier
+EQUD ldrb4F
+; 60-6F
+]
+IF IO_Podule% THEN
+[OPTp
+FNequd(&20,IOpodule_Read)
+]
+ELSE
+[OPTp
+EQUD userport_readdata
+EQUD dummy
+EQUD userport_readDDR
+EQUD dummy
+EQUD readT3low_count
+EQUD readT3high_count
+EQUD readT3low_latch
+EQUD readT3high_latch
+EQUD readT4low_count
+EQUD readT4high_count
+EQUD dummy
+EQUD dummy
+EQUD dummy
+EQUD read_ifr2
+EQUD read_ier2
+EQUD dummy
+
+EQUD userport_readdata
+EQUD dummy
+EQUD userport_readDDR
+EQUD dummy
+EQUD readT3low_count
+EQUD readT3high_count
+EQUD readT3low_latch
+EQUD readT3high_latch
+EQUD readT4low_count
+EQUD readT4high_count
+EQUD dummy
+EQUD dummy
+EQUD dummy
+EQUD read_ifr2
+EQUD read_ier2
+EQUD dummy
+]
+ENDIF
+
+[OPTp
+; 80-FF
+FNequd(&80,dummy)
+
+FNsound_misc
+
+
+.opcode7
+;SWI &100+ASC"O"
+;SWI &100+ASC"p"
+;SWI &100+ASC"7"
+;SWI &100+ASC" "
+;FNprint(zpc)
+B opcode7
+.printvsynctimer1
+FNprintvsynctimer(1)
+MOV PC,R14
+.printvsynctimer2
+FNprintvsynctimer(2)
+MOV PC,R14
+.printvsynctimer3
+FNprintvsynctimer(3)
+MOV PC,R14
+.printvsynctimer4
+FNprintvsynctimer(4)
+MOV PC,R14
+
+FNalign16 ; fit into cache better?
+
+FNopcodes
+
+.patch_screen
+MOV PC,R14
+.patch_pixel
+MOV PC,R14
+
+.end
+]
+NEXT
+OSCLI"Load <6502Em$Dir>.Tables_HR.mode0tab "+STR$~(code+mode0tab)
+OSCLI"Load <6502Em$Dir>.Tables_HR.mode0tab "+STR$~(code+mode0tab_orig)
+OSCLI"Load <6502Em$Dir>.Tables_HR.mode1tab "+STR$~(code+mode1tab)
+OSCLI"Load <6502Em$Dir>.Tables_HR.mode1ORIG "+STR$~(code+mode1tab_orig)
+OSCLI"Load <6502Em$Dir>.TABLES_HR.mode2tab "+STR$~(code+mode2tab)
+OSCLI"Load <6502Em$Dir>.TABLES_HR.mode2ORIG "+STR$~(code+mode2tab_orig)
+REMOSCLI"Load <6502Em$Dir>.Tables.mode4tab "+STR$~(code+mode4tab)      **REM 32b
+REMOSCLI"Load <6502Em$Dir>.Tables.mode4tab "+STR$~(code+mode4tab_orig) **REM 32b
+OSCLI"Load <6502Em$Dir>.Tables_HR.mode5tab "+STR$~(code+mode5tab)
+OSCLI"Load <6502Em$Dir>.Tables_HR.mode5ORIG "+STR$~(code+mode5tab_orig)
+
+ENDPROC
+
+DE
+DEFF
+
+
+DEFFNldrb2(R,S)
+IF R<>0 OR S<>1 THEN STOP
+IF master THEN
+[OPTp
+CMP S,#&3000
+;LDRLOB R,[mem,S]
+MOVLO R,#pagetable
+LDRLOB R,[R,S,LSR#12]
+LDRLOB R,[S,R,LSL#12]
+BLHS ldrb_screen
+]
+ELSE
+[OPTp
+LDRB R,[mem,S]
+CMP S,#&FC00
+BLHS ldrb_sheila
+]
+ENDIF
+=""
+
+DEFFNldrb16(R,S)
+IF R<>0 OR S<>1 THEN STOP
+IF master THEN
+[OPTp
+CMP S,#&3000 << 16
+;LDRLOB R,[mem,S,LSR#16]
+MOVLO R,#pagetable
+LDRLOB R,[R,S,LSR#28]
+MOVLO R,R,LSL#12
+LDRLOB R,[R,S,LSR#16]
+BLHS ldrb16_screen
+]
+ELSE
+[OPTp
+LDRB R,[mem,S,LSR#16]
+CMP S,#&FC00 << 16
+BLHS ldrb16_sheila
+]
+ENDIF
+=""
+
+DEFFNstrb(R,S)
+IF R<>0 OR S<>1 THEN ERROR
+IF master THEN
+[OPTp
+CMP S,F,LSR#16 ; wrap_addr
+;STRLTB R,[mem,S]
+MOVLT R2,#pagetable
+LDRLTB R2,[R2,S,LSR#12]
+STRLTB R,[S,R2,LSL#12]
+BLGE strb
+]
+ELSE
+[OPTp
+;CMP S,F,LSR#16 ; wrap_addr
+CMP S,#&8000
+STRLTB R,[mem,S]
+BLGE strb8000
+]
+ENDIF
+=""
+
+DEFFNstrb16(R,S)
+IF R<>0 OR S<>1 THEN ERROR
+[OPTp
+MOV S,S,LSR#16
+FNstrb(R,S)
+]
+=""
+
+DEFFNXXstrb16(R,S)
+IF R<>0 OR S<>1 THEN ERROR
+[OPTp
+;CMP S,#&C000 << 16
+;STRLOB R,[mem,S,LSR#16]
+MOV S,S,LSR#16
+;CMP S,F,LSR#16 ; wrap_addr
+CMP S,#&8000
+STRLTB R,[mem,S]
+BLGE strb8000 ; 16
+]
+=""
+
+DEFFNshowregs
+[OPTp
+FNprint(F) :REM new position for 32 bit
+
+FNprint(zpc)
+FNprintopcode :REM new for 32bit
+FNprint(A)
+FNprint(X)
+FNprint(Y)
+;FNprint(zSP)        ;REM'd out for 32bit
+;ADD R12,mem,#&DF00  ;REM'd out for 32bit
+;LDRB R12,[R12,#&DA] ;REM'd out for 32bit
+;MOV R12,R12,LSL#24  ;REM'd out for 32bit
+;FNprint2(12)        ;REM'd out for 32bit
+;SWI &10D            ;REM'd out for 32bit
+;SWI "OS_NewLine"
+]
+=""
+
+DEFFNprint(R)
+CASE R OF
+WHEN zpc : A$=FNprint4(R)
+REMWHEN F   : [OPTp:MOV R2,F,LSL#24:FNprint2(2):] **32bit REM'd
+WHEN F   : A$=FNprintflags      :REM *32bit new
+OTHERWISE
+A$=FNprint2(R)
+ENDCASE
+=""
+
+WHEN A   : A$=FNprint2(R)
+WHEN X   : A$=FNprint2(R)
+WHEN Y   : A$=FNprint2(R)
+WHEN zSP  : [OPTp:MOV R0,#ASC"1":STRB R0,[R14],#1:FNprint2(zSP):]
+WHEN F   : A$=FNprintflags
+ENDCASE
+=""
+
+DEFFNprintflags
+[OPTp     ;all change for 32bit ************
+TST F,#%1<<0 : MOVEQ R0,#ASC"c" : MOVNE R0,#ASC"C" : STRB R0,[R14],#1
+TST F,#%1<<1 : MOVEQ R0,#ASC"z" : MOVNE R0,#ASC"Z" : STRB R0,[R14],#1
+TST F,#%1<<2 : MOVEQ R0,#ASC"i" : MOVNE R0,#ASC"I" : STRB R0,[R14],#1
+TST F,#%1<<3 : MOVEQ R0,#ASC"d" : MOVNE R0,#ASC"D" : STRB R0,[R14],#1
+TST F,#%1<<4 : MOVEQ R0,#ASC"b" : MOVNE R0,#ASC"B" : STRB R0,[R14],#1
+TST F,#%1<<6 : MOVEQ R0,#ASC"v" : MOVNE R0,#ASC"V" : STRB R0,[R14],#1
+TST F,#%1<<7 : MOVEQ R0,#ASC"n" : MOVNE R0,#ASC"N" : STRB R0,[R14],#1
+;TST F,#%1<<5 : ;MOVEQ R0,#ASC"0" : ;MOVNE R0,#ASC"1" : ;STRB R0,[R14],#1
+;SWI &120
+MOV R0,#&0A : STRB R0,[R14],#1
+]
+=""
+
+DEFFNprintopcode
+[OPTp ;new for 32bit *******************
+LDRB R1,[mem,zpc,LSR#16]
+MOV R1,R1,LSL#24
+FNprint2(1)
+]
+=""
+
+DEFFNprint2(R)
+LOCALI%
+[OPTp         ;all change for 32 bit **********
+MOV R1,R
+
+MOV R1,R1,ROR#28
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+;SWI "OS_WriteC"
+CMP R0,#48
+STRNEB R0,[R14],#1
+
+MOV R1,R1,ROR#28
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+;SWI "OS_WriteC"
+STRB R0,[R14],#1
+
+;SWI &120
+MOV R0,#&20 : STRB R0,[R14],#1
+]
+=""
+
+DEFFNprint4(R)
+LOCALI%
+[OPTp
+MOV R1,R
+]
+FORI%=0 TO 3
+[OPT p
+MOV R1,R1,ROR#28
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+;SWI "OS_WriteC" - ***commented for 32bit **********
+STRB R0,[R14],#1
+]
+NEXT
+[OPTp
+;SWI &120
+MOV R0,#&20 : STRB R0,[R14],#1
+]
+=""
+
+DEFFNXXprint32(R) :REM *****new name for 32 bit ******
+LOCALI%
+[OPTp
+MOV R1,R
+]
+FORI%=0 TO 31
+[OPT p
+MOV R1,R1,ROR#28
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+SWI "OS_WriteC"
+]
+NEXT
+[OPTp
+SWI &120
+]
+=""
+
+DEFFNprints(A$)
+[OPTp
+SWI "OS_WriteS"
+EQUS A$
+EQUB 10
+EQUB 13
+EQUB 0
+ALIGN
+]
+=""
+
+DEFFNundoc(A%)
+IF opcode%<>A% THEN STOP
+[OPTp
+;TST F,#%1000
+;SWIEQ &100+ASC"d"
+;SWINE &100+ASC"D"
+
+;SWI &100+ASC(LEFT$(RIGHT$("0"+STR$~A%,2),1))
+;SWI &100+ASC(RIGHT$(STR$~A%,1))
+;SWI &100+ASC" "
+;FNprint(zpc)
+;SWI &100+ASC" ":;SWI &100+ASC" "
+
+;MOV R0,#15 : ;SWI "OS_Byte"
+;SWI 4
+]
+=""
+
+DEFFNequd(A%,B%)
+LOCALI%
+FORI%=1 TO A%
+[OPTp
+EQUD B%
+]
+NEXT
+=""
+
+DEFFNdo_interrupt
+[OPTp
+MOV R0,zpc,LSR#24
+FNpush(0)
+MOV R0,zpc,LSR#16
+FNpush(0)
+BIC F,F,#%10000 ; clear BRK flag
+FNpush(F)
+ORR F,F,#%100 ; !!!!!!
+   MOV R0,#&FF00
+ADD R0,R0,#&00FC ;not 00FE - this gives a rotated load...so ARMv7 exception!!!
+LDR zpc,[mem,R0]      ; load from FFFC  /SH
+MOV zpc,zpc,LSR#16    ; shift right (to emulate rotated load)
+MOV zpc,zpc,LSL#16    ;  ...as before
+]
+=""
+
+DEFFNdivmod(A,B,C,D,E)
+div%+=1
+[OPTp
+MOV C,#1
+MOV D,#0
+MOV E,B
+.divloop1(div%)
+MOV B,B,LSL#1
+MOV C,C,LSL#1
+CMP B,A
+BLO divloop1(div%)
+
+.divloop2(div%)
+CMP B,A : BLS divjump(div%)
+CMP B,E : BLS divjump(div%)
+MOV B,B,LSR#1
+MOV C,C,LSR#1
+B divloop2(div%)
+.divjump(div%)
+CMP B,A
+SUBLS A,A,B
+ADDLS D,D,C
+CMP B,E
+BHI divloop2(div%)
+]
+=""
+
+DEFFNshadow
+IF master THEN
+[OPTp
+LDRB R2,[mem,#ACCCON]
+;EOR R2,R2,R2,LSR#2
+TST R2,#%1
+SUBNE R13,mem,#&13000
+MOVEQ R13,mem
+]
+ELSE
+[OPTp
+MOV R13,mem
+]
+ENDIF
+=""
+DEFPROCclearmem(S%,E%)
+P%=buffer
+[OPT2
+EQUD S% ; memory
+EQUD E% ; memory+&8000
+.clear
+MOV R0,#0
+LDR R1,buffer
+LDR R2,buffer+4
+.loop
+STR R0,[R1],#4
+CMP R1,R2
+BNE loop
+MOV PC,R14
+]
+CALL clear
+ENDPROC
+
+DEFFNfetch2
+IF master THEN
+[OPTp
+;FNshowregs2 - removed for 32bit ************
+;LDRB R2,[mem,zpc,LSR#16]
+;ADD PC,table,R2,LSL#8
+MOV R2,#pagetable
+LDRB R2,[R2,zpc,LSR#28]
+MOV R2,R2,LSL#12
+LDRB R2,[R2,zpc,LSR#16]
+ADD PC,table,R2,LSL#8
+]
+ELSE
+[OPTp
+;FNshowregs2 - removed for 32bit ************
+LDRB R2,[mem,zpc,LSR#16]
+ADD PC,table,R2,LSL#8
+]
+ENDIF
+=""
+
+DEFFNfetch3(N%,T%)
+IF N%<>0 THEN [OPTp:ADD zpc,zpc,#N% << 16:]
+IF master THEN
+[OPTp
+FNshowregs2
+SUBS time,time,#T%
+MOVPL R2,#pagetable
+LDRPLB R2,[R2,zpc,LSR#28]
+MOVPL R2,R2,LSL#12
+LDRPLB R2,[R2,zpc,LSR#16]
+ADDPL PC,table,R2,LSL#8
+B fetch2
+]
+ELSE
+[OPTp
+FNshowregs2
+SUBS time,time,#T%
+LDRPLB R2,[mem,zpc,LSR#16]
+ADDPL PC,table,R2,LSL#8
+B fetch2
+]
+ENDIF
+=""
+
+DEFFNfetch(N%,T%)
+Q$=FNfetch3(N%,T%)
+opcode%+=1
+IF bcd_loop%=0 THEN
+IF opcode(opcode%-1)=0 THEN STOP
+IF opcode(opcode%)<>0 AND p=0 THEN STOP
+IF P%-opcode(0)>opcode%*4*64 THEN PRINT~opcode%
+P%=opcode(0)+opcode%*4*64
+O%=code+P%
+ELSE
+P%=bcd(0)+opcode%*4*64
+O%=code+P%
+ENDIF
+=""
+DEFFNbcd(A%) :
+IF P%>opcode(0)+(A%+256)*4*64 THEN STOP
+P%=opcode(0)+(A%+256)*4*64 : O%=code+P% : =""
+
+DEFFNalign16
+WHILE (P% AND 15)<>0
+P%+=1 : O%+=1
+ENDWHILE
+=""
+DEF PROCerror
+REPORT:PRINT " at line ";ERL
+END
+
+DEFFNshowregs2
+[OPTp
+;BL show_regs
+]
+=""
+DEFFNprintvsynctimer(tab)
+LOCALI%
+[OPTp
+SWI &100+&1F ; PRINTTAB
+SWI &100+0
+SWI &100+tab
+SWI &100+ASC"T"
+SWI &100+ASC"1"+tab-1
+LDR R1,[mem,#vsync_timer]
+LDR R0,[mem,#min] : SUB R1,R1,R0
+ADD R1,R1,time
+MOV R1,R1,LSL#16
+]
+FORI%=0 TO 3
+[OPT p
+MOV R1,R1,ROR#28
+AND R0,R1,#&F
+CMP R0,#10
+ADDGE R0,R0,#7
+ADD R0,R0,#48
+SWI "OS_WriteC"
+]
+NEXT
+[OPTp
+SWI &120
+]
+=""
