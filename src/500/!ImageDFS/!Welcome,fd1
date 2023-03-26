@@ -1,0 +1,244 @@
+REM Welcome window for ImageDFS v1.10
+REM
+REM LEN Stephen Harrison, 1996
+:
+betatest%=TRUE
+PROCinitdesk("Welcome to ImageDFS")
+PROCrundesk
+PROCclosedown
+END
+
+
+DEFPROCclosedown
+ON ERROR PROCexiterror
+SYS "Wimp_CloseDown"
+wimp_running%=FALSE
+ENDPROC
+
+
+DEF PROCiniterror
+IF wimp_running% THEN
+ PROCcancelbox("","Error while initialising: "+REPORT$+" at line "+STR$ERL)
+ SYS "Wimp_CloseDown"
+ELSE
+ REPORT:PRINT" at line ";ERL/10
+ENDIF
+END
+ENDPROC
+
+
+DEF PROCexiterror
+IF wimp_running% THEN
+ PROCcancelbox("","Error while quitting: "+REPORT$)
+ SYS "Wimp_CloseDown"
+ELSE
+ REPORT:PRINT" at line ";ERL/10
+ENDIF
+END
+ENDPROC
+
+
+DEF PROCerror
+REM click%=FNokcancelbox("",REPORT$+" at line "+STR$ERL+". Click OK to continue or Cancel to quit.")
+click%=FNokcancelbox("",REPORT$+". Click OK to continue or Cancel to quit. ("+STR$ERL+")")
+IF click%=%10 THEN PROCclosedown:END
+ENDPROC
+
+
+DEF PROCcancelbox(boxtitle$,message$)   :REM assumes it is an error, unless boxtitle$<>""
+$(block%+4)=message$+CHR$0
+IF boxtitle$="" THEN boxtitle$=title$:!block%=ERR:flags%=%00010 ELSE !block%=1:flags%=%10010
+:
+SYS "Wimp_ReportError",block%,flags%,boxtitle$
+ENDPROC
+
+
+DEF FNokcancelbox(boxtitle$,message$)   :REM assumes it is an error, unless boxtitle$<>""
+$(block%+4)=message$+CHR$0
+IF boxtitle$="" THEN boxtitle$=title$:!block%=ERR:flags%=%00011 ELSE !block%=1:flags%=%10011
+:
+SYS "Wimp_ReportError",block%,flags%,boxtitle$ TO ,response%
+=response% :REM 1=Ok, 2=Cancel
+
+
+DEF PROCinitdesk(app$)
+wimp_running%=FALSE
+ON ERROR PROCiniterror:END
+title$=app$
+:
+blocklen%=1024
+quit%=FALSE
+riscos%=3.00
+:
+DIM block% blocklen%
+:
+PROCloadsprites
+:
+$block%="TASK"
+block%!4=0
+:
+SYS "Wimp_Initialise",riscos%*100,!block%,title$,block%+4 TO riscos%,task%
+wimp_running%=TRUE
+:
+PROCloadtemplates
+PROCopenwelcome         :REM also loads choices via PROCinitchoices
+ENDPROC
+
+
+DEF PROCloadsprites
+LOCAL sprite$
+SYS "OS_ReadModeVariable",MODE,5 TO ,,yeig%
+IF yeig%<=2 THEN sprite$="welcome22" ELSE sprite$="welcome"
+:
+file%=OPENIN("<ImageDFS$Dir>.Resources."+sprite$)
+IF file%=0 AND sprite$="welcome22" THEN
+ sprite$="welcome"
+ file%=OPENIN("<ImageDFS$Dir>.Resources."+sprite$)
+ENDIF
+spritelen%=EXT#file%
+CLOSE#file%
+:
+DIM sprites% spritelen%+32
+!sprites%=spritelen%+32
+sprites%!8=16
+SYS "OS_SpriteOp",256+9,sprites%
+SYS "OS_SpriteOp",256+10,sprites%,"<ImageDFS$Dir>.Resources."+sprite$
+ENDPROC
+
+
+DEF PROCloadtemplates
+LOCAL template$,var$,opts3d%,id%,ind_len%,info_len%,panel_len%
+:
+template$="WelTemp3D"
+temps_3d=FALSE
+:
+IF riscos%>=300 THEN
+ DIM opts3d% 60
+ SYS "XOS_ReadVarVal","ImageDFS$3D",opts3d%,60,0,0 TO ;flags%
+ IF (flags% AND 1)=0 THEN
+  var$="":REM =FNblock_to_string(opts3d%)
+  IF INSTR(var$,"Yes")>0 THEN template$="WelTemp3D":temps_3d=TRUE
+  IF INSTR(var$,"StyleGuide")>0 THEN template$="WelTemp3D":temps_3d=TRUE
+ ENDIF
+ENDIF
+:
+maxicons%=24
+optlen%=1024
+:
+ind_len%=200
+REM IF blocklen%<88+32*maxicons%+optlen% ERROR 255,"'block%' too small"
+DIM ind% ind_len%
+DIM id% 12
+:
+SYS "Wimp_OpenTemplate",,"<ImageDFS$Dir>.Resources."+template$
+$id%="welcome"
+SYS "Wimp_LoadTemplate",,block%,ind%,ind%+ind_len%,-1,id%,0 TO ,,remain%,,,,next%
+block%!64=sprites%
+SYS "Wimp_CreateWindow",,block% TO welcome%
+SYS "Wimp_CloseTemplate"
+ENDPROC
+
+
+DEF FNfindindstr(window%,icon%)
+!block%=window%:block%!4=icon%
+SYS "Wimp_GetIconState",,block%
+=block%!28
+
+
+DEF PROCopenwelcome
+welcome_version%=7      :versionstr%=FNfindindstr(welcome%,welcome_version%)
+welcome_user%=4         :userstr%=FNfindindstr(welcome%,welcome_user%)
+OSCLI"Load <ImageDFS$Dir>.Resources.SerialNo "+STR$~userstr%
+:
+SYS"ImageDFS_Version" TO version%
+$versionstr%="ImageDFS v"+STR$(version% DIV 100)+"."+LEFT$(STR$(version% MOD 100)+"00",2)
+IF betatest% THEN $versionstr%=$versionstr%+"b"
+:
+PROCinitchoices
+PROCopenwindow(welcome%)
+ENDPROC
+
+
+DEF PROCopenwindow(window%)
+LOCAL topscroll%
+topscroll%=FALSE                        :REM DEFAULT open at CURRENT scroll offsets
+:
+CASE window% OF
+ENDCASE
+:
+!block%=window%
+SYS "Wimp_GetWindowState",,block%
+block%!28=-1                            :REM open window at the front (+ works for panes!)
+:
+CASE window% OF
+ WHEN welcome%   : SYS "OS_ReadModeVariable",-1,11 TO ,,xpix
+                   SYS "OS_ReadModeVariable",-1,4 TO ,,xeig
+                   xpix=(xpix+1)<<xeig
+                   SYS "OS_ReadModeVariable",-1,12 TO ,,ypix
+                   SYS "OS_ReadModeVariable",-1,5 TO ,,yeig
+                   ypix=((ypix+1)<<yeig)      :REM -136
+                   width=block%!12-block%!4
+                   height=block%!16-block%!8
+                   block%!4=xpix/2-width/2
+                   block%!12=block%!4+width
+                   block%!8=ypix/2-height/2   :REM +136
+                   block%!16=block%!8+height
+                   SYS "Wimp_OpenWindow",,block%
+ OTHERWISE       : IF topscroll% THEN block%!20=0:block%!24=0
+                   SYS "Wimp_OpenWindow",,block%
+ENDCASE
+ENDPROC
+
+
+DEF PROCrundesk
+quit%=FALSE
+:
+ON ERROR LOCAL PROCerror
+:
+time%=TIME
+WHILE (TIME-time%)<100*5
+ PROCwimppoll
+ IF (TIME-time%)>100 AND loaddesk%=1 THEN PROCloaddesktop
+ENDWHILE
+:
+ENDPROC
+
+
+DEF PROCwimppoll
+SYS "Wimp_Poll",0,block% TO reason%
+CASE reason% OF
+ WHEN 02 : PROCreopenwindow(!block%)            : REM re-open window request
+ WHEN 06 : PROCclick(block%!12)                 : REM mouse click
+ WHEN 17 :                                      : REM user message
+ WHEN 18 :                                      : REM user message recorded
+ENDCASE
+ENDPROC
+
+
+DEF PROCclick(wind%)    :REM icon in block%!16
+loaddesk%+=1
+ENDPROC
+
+
+DEF PROCreopenwindow(window%)           :REM don't alter block% before window opening!!!
+CASE window% OF
+ OTHERWISE       : SYS "Wimp_OpenWindow",,block%
+ENDCASE
+ENDPROC
+
+
+DEF PROCinitchoices
+SYS"ImageDFS_Options",%0000000,%0000000 TO ,,!block%
+SYS"ImageDFS_Options",%0000000,block%!28
+loaddesk%=!block% AND %1<<3
+IF loaddesk%=0 THEN loaddesk%=1 ELSE loaddesk%=0
+!block%=welcome%
+block%!4=6
+IF loaddesk%=1 THEN SYS"Wimp_DeleteIcon",,block%
+ENDPROC
+
+
+DEF PROCloaddesktop
+SYS "Wimp_StartTask","<ImageDFS$Dir>.!RunDesk"
+loaddesk%=2
+ENDPROC

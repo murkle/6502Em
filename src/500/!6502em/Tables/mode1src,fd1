@@ -1,0 +1,15 @@
+DIM mode1table 256*4
+DIM pal%(3)
+pal%()=0,1,3,7
+mask%=%10001
+FOR I%=0 TO 255
+A%=0
+FOR J%=0 TO 3
+col%=(I%>>(3-J%)) AND mask%
+col%=( (col%) OR (col%>>3) ) AND %11
+A%=A% OR (pal%(col%)<<J%*8)
+A%=A% OR (pal%(col%)<<(J%*8+4))
+NEXT
+mode1table!(I%*4)=A%
+NEXT
+OSCLI "SAVE <6502Em$Dir>.Tables.mode1tab "+STR$~mode1table+" +"+STR$~(256*4)

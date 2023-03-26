@@ -1,0 +1,11 @@
+DIM mode4table 256*4*2
+DIM pal%(1)
+pal%()=0,%0111
+FOR I%=0 TO 15
+B%=0
+FOR J%=0 TO 3
+B%=B% OR pal%( (I%>>(0+J%)) AND 1 )<<((3-J%)*8)
+NEXT
+mode4table!(I%*4)=B% OR (B%<<4)
+NEXT
+OSCLI "SAVE <6502Em$Dir>.Tables.mode4tab "+STR$~mode4table+" +"+STR$~(16*4)

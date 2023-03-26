@@ -1,0 +1,27 @@
+REM > mode1ori15
+DIM mode1tab 10000
+DIM col%(3)
+FORI%=0 TO 3
+REMREAD col%(I%)
+col%(I%)=((I% AND 1)<<1) + ((I% AND 2)<<2)
+col%(I%)+=col%(I%)<<8
+REMcol%(I%)+=col%(I%)<<16
+NEXT
+FORI%=0 TO 255
+C%=(I% AND 2^4)>>3
+C%+=(I% AND 2^0)
+D%=(I% AND 2^5)>>4
+D%+=(I% AND 2^1)>>1
+mode1tab!(2*I%*4+4)=col%(D% MOD 4)+(col%(C% MOD 4)<<16)
+NEXT
+FORI%=0 TO 255
+C%=(I% AND 2^6)>>5
+C%+=(I% AND 2^2)>>2
+D%=(I% AND 2^7)>>6
+D%+=(I% AND 2^3)>>3
+mode1tab!(2*I%*4)=col%(D% MOD 4)+(col%(C% MOD 4)<<16)
+NEXT
+OSCLI"SAVE <6502Em$DIR>.Tables.MODE1ORIG "+STR$~mode1tab+" +800"
+
+REMDATA 0,&15,&62,&77,&88,&9D,&EA,&FF
+DATA 0,&15,&77,&FF

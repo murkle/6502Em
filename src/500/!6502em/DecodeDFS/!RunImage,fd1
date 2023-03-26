@@ -1,0 +1,150 @@
+REM > DecodeDFS
+REM Plugin for 6502Em
+REM By Michael Borcherds
+REM version 0.03 (7th May 2005)
+REM 0.02 added support for filenames containing a .
+REM 0.03 added hack for Shark (filename and directory both A)
+REM 0.04 added INKEY40 pause
+SYS "Wimp_Initialise",200,&4B534154,"DecodeDFS"
+shark%=FALSE
+H%=0
+ONERROR PROCerror(REPORT$+" at line "+STR$ERL)
+DIM buffer 200*1024, cat 512
+!buffer=0:SYS "OS_ReadVarVal","6502Em$TempDir",buffer,255 TO ,,len%:buffer?len%=13:TempDir$=$buffer
+
+
+SYS "OS_GetEnv" TO A$
+IF RIGHT$(A$,1)=" " THEN
+I%=0
+REPEATI%+=1:UNTILMID$(A$,LENA$-I%,1)<>" "
+A$=LEFT$(A$,LENA$-I%)
+ENDIF
+IF RIGHT$(A$,1)=CHR$34 THEN A$=LEFT$(A$,LENA$-1)
+IF LEFT$(A$,1)=CHR$34 THEN A$=RIGHT$(A$,LENA$-1)
+I%=0
+REPEATI%+=1:UNTILMID$(A$,LENA$-I%,1)=" " OR I%=LENA$
+F$=RIGHT$(A$,I%)
+
+
+boot%=FALSE
+ignore%=TRUE
+double_step%=FALSE
+drive%=0
+side%=0
+path$=FNstripBBCB22(F$)
+path$=FNstripleaf(path$)
+path$=LEFT$(path$,9)
+IF FNupper(path$)="SHARK" THEN shark%=TRUE ELSE shark%=FALSE
+path$=TempDir$+".!"+path$
+REMpath$=TempDir$+".!"+LEFT$(FNstripleaf(FNstripBBCB22(F$)),9)
+OSCLI"CDIR "+path$
+
+H%=OPENINF$
+
+location%=0
+PROCdiscop(512,cat)
+
+opt%=((cat?&106)>>4) AND %11
+
+P%=cat
+title$=FNget
+REMPRINT"Title ";title$'
+FOR J%=1 TO 31
+dir$=CHR$(P%?7 AND &7F)
+load%=P%!&100 AND &FFFF
+exec%=P%!&102 AND &FFFF
+length%=P%!&104 AND &FFFF
+location%=((P%?&106 AND 3) << 8) + P%?&107
+file$=FNget
+IF FNupper(file$)="!BOOT" THEN file$="!!Boot":boot%=TRUE
+IF shark%=TRUE AND file$="A" THEN file$="!A"
+IF INSTR(file$,".") THEN SYS "XOS_CLI","CDIR "+path$+"."+LEFT$(file$,INSTR(file$,".")-1)
+IF file$<>"" THEN
+REMPRINTdir$;".";file$;" ";~load%;" ";~exec%;" ";length%;" ";location%
+PROCdiscop(length%,buffer)
+IF dir$<>"$" THEN
+OSCLI "CDir "+path$+"."+dir$
+OSCLI"SAVE "+path$+"."+dir$+"."+file$+" "+STR$~buffer+" +"+STR$~length%+" "+STR$~exec%+" "+STR$~load%
+ELSE
+OSCLI"SAVE "+path$+"."+file$+" "+STR$~buffer+" +"+STR$~length%+" "+STR$~exec%+" "+STR$~load%
+ENDIF
+ENDIF
+NEXT
+
+CLOSE#H%:H%=0
+
+run$=path$+".!Run"
+H%=OPENOUT run$
+BPUT#H%,"BBC Script"
+CASE opt% OF
+WHEN 2:BPUT#H%,"P.INKEY40 : *Run !!Boot"
+WHEN 3:BPUT#H%,"P.INKEY40 : *Exec !!Boot"
+OTHERWISE
+IF boot% THEN BPUT#H%,"P.INKEY40 : *Exec !!Boot" ELSE BPUT#H%,"*Cat"
+ENDCASE
+CLOSE#H%:H%=0
+OSCLI"SETTYPE "+run$+" BBC"
+OSCLI"Filer_Run "+path$
+
+
+END
+
+DEFPROCdiscop(length%,buffer)
+LOCAL P%,track%,sector%,off%
+sector%=location% MOD 10
+track%=location% DIV 10
+WHILE length%>0
+length%=length%-256
+IF double_step% THEN new_loc%=(track%*20)+sector% ELSE new_loc%=(track%*10)+sector%
+SYS "OS_GBPB",3,H%,buffer+off%,256,new_loc%*256+side%
+off%+=256
+sector%+=1
+IF sector%=10 THEN sector%=0 : track%+=1
+ENDWHILE
+ENDPROC
+
+DEFFNget
+LOCAL A$,I%
+FOR I%=0 TO 6
+IF (P%?I%>32 OR P%?I%=31) AND P%?I%<127 THEN A$=A$+CHR$(P%?I% AND &7F) ELSE I%=8
+NEXT
+P%+=8
+=A$
+
+DEFFNstripleaf(A$)
+LOCAL I%
+I%=LENA$+1
+REPEATI%-=1:UNTIL MID$(A$,I%,1)="." OR MID$(A$,I%,1)=":"
+=RIGHT$(A$,LENA$-I%)
+
+DEFFNstripBBCB22(A$)
+IF FNupper(RIGHT$(A$,4))="/BBC" AND LENA$>4 THEN =LEFT$(A$,LENA$-4)
+IF FNupper(RIGHT$(A$,4))="/B22" AND LENA$>4 THEN =LEFT$(A$,LENA$-4)
+IF FNupper(RIGHT$(A$,4))="/SSD" AND LENA$>4 THEN =LEFT$(A$,LENA$-4)
+IF FNupper(RIGHT$(A$,4))="/DSD" AND LENA$>4 THEN =LEFT$(A$,LENA$-4)
+=A$
+DEFFNupper(A$)
+LOCALI%,B$
+FORI%=1 TO LENA$
+IF MID$(A$,I%,1)>="a" AND MID$(A$,I%,1)<="z" THEN B$=B$+CHR$(ASCMID$(A$,I%,1)-32) ELSE B$=B$+MID$(A$,I%,1)
+NEXT
+=B$
+
+DEFPROCerror(E$)
+ONERROR OFF
+IF H%>0 CLOSE#H%:H%=0
+ERROR 0,"Message from DecodeDFS: "+E$
+ENDPROC
+
+DEFFNswapdotslash(A$)
+LOCALI%
+FOR I%=0 TO LENA$-1
+IF MID$(A$,I%,1)="." THEN
+MID$(A$,I%,1)="/"
+ELSE
+IF MID$(A$,I%,1)="/" THENMID$(A$,I%,1)="."
+ENDIF
+NEXT
+=A$
+
+

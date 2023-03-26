@@ -1,0 +1,110 @@
+REM > Sound7a
+REM
+REM BBC Sound and Speech emulation library
+REM For Mike Borcherds BBC emulator
+REM This file by Dominic Symes
+REM Updated and fixed for DMA buffer>208 (eg. RPi) by S. Harrison, 2014
+
+REM Set up global defaults
+DEF PROCsound_define
+REM Size of circular buffer for each channel
+sound_buf_size_log%=10
+sound_buf_size%=(1<<sound_buf_size_log%)
+ENDPROC
+
+REM Call to set up sound tables
+DEF PROCsound_init
+LOCAL a,f%
+PROCsound_define
+REMvolume%=127
+DIM sound_buffer% (4*sound_buf_size%)
+DIM sound_vol_table% &40
+DIM sound_sample% &200
+DIM sound_stack% &80
+FOR f%=0 TO &3FF
+?(sound_buffer%+f%)=f%*10
+NEXT
+SYS "Sound_Volume",127 TO sc_vol
+REM Set up sound sample for pitch channels - half way between
+REM a sine wave and square wave gives best likeness.
+FOR f%=0 TO &7F
+SYS "6502_Sound",f%,A%
+a=SIN((f%/128)*PI)
+IF a<>0 THEN a=a^.2
+SYS "Sound_SoundLog",&7FFFFFFF*a TO a
+?(sound_sample%+f%)=a
+?(sound_sample%+&80+f%)=a+1
+NEXT
+REM Set up the sound sample for the pulse generator
+FOR f%=0 TO &3F
+?(sound_sample%+&100+f%)=?(sound_sample%+f%*(8/4))
+NEXT
+FOR f%=0 TO &BF
+?(sound_sample%+&110+f%)=?(sound_sample%+&80+f%*(8/12))
+NEXT
+SYS "Sound_Volume",sc_vol
+sound_voice%=code+!(code+22*4)
+!(sound_voice%+0)=sound_buffer%
+!(sound_voice%+4)=sound_vol_table%
+!(sound_voice%+8)=sound_sample%
+!(sound_voice%+12)=sound_stack%+&40
+sound_voice%+=16
+ENDPROC
+
+DEFPROCsound_reinit
+sound_voice%=code+!(code+22*4)
+soundDMAsize=sound_voice%-4
+!soundDMAsize=208 :REM sound DMA size / sh, may be 256 on RPi, checked later
+!(sound_voice%+0)=sound_buffer%
+!(sound_voice%+4)=sound_vol_table%
+!(sound_voice%+8)=sound_sample%
+!(sound_voice%+12)=sound_stack%+&40
+sound_voice%+=16
+ENDPROC
+
+REM Call just before starting the emulator
+DEF PROCsound_setup
+IF NOTsound_on% THEN ENDPROC
+LOCAL f%,a%
+SYS "Sound_InstallVoice",sound_voice%,0 TO ,sound_voice_slot%
+SYS "Sound_Configure",4,208,48,0,0 TO sc_0,sc_1,sc_2,sc_3,sc_4
+SYS "Sound_Configure" TO ,realdmasize:!soundDMAsize=realdmasize :REM RPi fix
+SYS "Sound_AttachVoice",1,1 TO ,sv_1
+SYS "Sound_AttachVoice",2,1 TO ,sv_2
+SYS "Sound_AttachVoice",3,1 TO ,sv_3
+SYS "Sound_AttachVoice",4,1 TO ,sv_4
+SYS "Sound_AttachNamedVoice",1,"6502Emulator"
+SYS "Sound_AttachNamedVoice",2,"6502Emulator"
+SYS "Sound_AttachNamedVoice",3,"6502Emulator"
+SYS "Sound_AttachNamedVoice",4,"6502Emulator"
+REM Start infinite duration notes on each of the channels
+SYS "Sound_Volume",volume% TO sc_vol
+REM Set up the linear to log volume conversion
+FOR f%=0 TO &F
+a%=f%+(f%<<4)
+a%=a%+(a%<<8)
+a%=a%+(a%<<16)
+SYS "Sound_SoundLog",(a%>>>1) TO a%
+REMPRINT a%
+?(sound_vol_table%+f%)=a%
+NEXT
+SOUND 1,-1,1,255
+SOUND 2,-1,1,255
+SOUND 3,-1,1,255
+SOUND 4,-1,1,255
+sound%=TRUE
+ENDPROC
+
+REM Call after exiting the emulator
+DEF PROCsound_restore
+IF NOTsound_on% THEN ENDPROC
+SYS "Sound_Volume",sc_vol
+SYS "Sound_Configure",sc_0,sc_1,sc_2,sc_3,sc_4
+SYS "Sound_AttachVoice",1,sv_1
+SYS "Sound_AttachVoice",2,sv_2
+SYS "Sound_AttachVoice",3,sv_3
+SYS "Sound_AttachVoice",4,sv_4
+SYS "Sound_RemoveVoice",0,sound_voice_slot%
+sound%=FALSE
+ENDPROC
+

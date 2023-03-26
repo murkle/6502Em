@@ -1,0 +1,700 @@
+REM > Sound5
+REM
+REM BBC Sound and Speech emulation library
+REM For Mike Borcherds BBC emulator
+REM This file by Dominic Symes
+
+REM Set up global defaults
+DEF PROCsound_define
+REM Size of circular buffer for each channel
+sound_buf_size_log%=10
+sound_buf_size%=(1<<sound_buf_size_log%)
+ENDPROC
+
+REM Call to set up sound tables
+DEF PROCsound_init
+LOCAL a,f%
+PROCsound_define
+REMvolume%=127
+DIM sound_buffer% (4*sound_buf_size%)
+DIM sound_vol_table% &40
+DIM sound_sample% &200
+DIM sound_stack% &80
+FOR f%=0 TO &3FF
+?(sound_buffer%+f%)=f%*10
+NEXT
+SYS "Sound_Volume",127 TO sc_vol
+REM Set up sound sample for pitch channels - half way between
+REM a sine wave and square wave gives best likeness.
+FOR f%=0 TO &7F
+SYS "6502_Sound",f%,A%
+a=SIN((f%/128)*PI)
+IF a<>0 THEN a=a^.2
+SYS "Sound_SoundLog",&7FFFFFFF*a TO a
+?(sound_sample%+f%)=a
+?(sound_sample%+&80+f%)=a+1
+NEXT
+REM Set up the sound sample for the pulse generator
+FOR f%=0 TO &3F
+?(sound_sample%+&100+f%)=?(sound_sample%+f%*(8/4))
+NEXT
+FOR f%=0 TO &BF
+?(sound_sample%+&110+f%)=?(sound_sample%+&80+f%*(8/12))
+NEXT
+SYS "Sound_Volume",sc_vol
+sound_voice%=code+!(code+22*4)
+!(sound_voice%+0)=sound_buffer%
+!(sound_voice%+4)=sound_vol_table%
+!(sound_voice%+8)=sound_sample%
+!(sound_voice%+12)=sound_stack%+&40
+sound_voice%+=16
+ENDPROC
+
+DEFPROCsound_reinit
+sound_voice%=code+!(code+22*4)
+!(sound_voice%+0)=sound_buffer%
+!(sound_voice%+4)=sound_vol_table%
+!(sound_voice%+8)=sound_sample%
+!(sound_voice%+12)=sound_stack%+&40
+sound_voice%+=16
+ENDPROC
+
+REM Call just before starting the emulator
+DEF PROCsound_setup
+LOCAL f%,a%
+SYS "Sound_InstallVoice",sound_voice%,0 TO ,sound_voice_slot%
+SYS "Sound_Configure",4,208,48,0,0 TO sc_0,sc_1,sc_2,sc_3,sc_4
+SYS "Sound_AttachVoice",1,1 TO ,sv_1
+SYS "Sound_AttachVoice",2,1 TO ,sv_2
+SYS "Sound_AttachVoice",3,1 TO ,sv_3
+SYS "Sound_AttachVoice",4,1 TO ,sv_4
+SYS "Sound_AttachNamedVoice",1,"6502Emulator"
+SYS "Sound_AttachNamedVoice",2,"6502Emulator"
+SYS "Sound_AttachNamedVoice",3,"6502Emulator"
+SYS "Sound_AttachNamedVoice",4,"6502Emulator"
+REM Start infinite duration notes on each of the channels
+SYS "Sound_Volume",volume% TO sc_vol
+REM Set up the linear to log volume conversion
+FOR f%=0 TO &F
+a%=f%+(f%<<4)
+a%=a%+(a%<<8)
+a%=a%+(a%<<16)
+SYS "Sound_SoundLog",(a%>>>1) TO a%
+REMPRINT a%
+?(sound_vol_table%+f%)=a%
+NEXT
+SOUND 1,-1,1,255
+SOUND 2,-1,1,255
+SOUND 3,-1,1,255
+SOUND 4,-1,1,255
+ENDPROC
+
+REM Call after exiting the emulator
+DEF PROCsound_restore
+SYS "Sound_Volume",sc_vol
+SYS "Sound_Configure",sc_0,sc_1,sc_2,sc_3,sc_4
+SYS "Sound_AttachVoice",1,sv_1
+SYS "Sound_AttachVoice",2,sv_2
+SYS "Sound_AttachVoice",3,sv_3
+SYS "Sound_AttachVoice",4,sv_4
+SYS "Sound_RemoveVoice",0,sound_voice_slot%
+ENDPROC
+
+REM Code to interpret writes to the sound chip
+REM mem=3 A=4 X=5 Y=6 F=7 SP=8 time=9 zpc=10 table=11
+REM p=pass
+DEF FNsound_latch
+PROCsound_define
+[OPT p
+
+; the following byte should be written by regb_4f and should
+; hold a copy of what's on the slow data bus
+
+.sound_data EQUD 0
+
+; Notes:
+; Clock is 2Mhz. One buffer fill every 48 micro secs = 96 cycles.
+; Pitch phase increment = &60000 / (10 bit BBC sound chip freq)
+; Cleary greatest sensible pitch increment is &4000, so very
+; small BBC frequencies are conventionally meaningless.
+; A BBC frequency of 1 is assumed to be an
+; attempt to modulate the amplitude manually (eg Superior
+; Software speech) and is handled accordingly.
+
+;E Called when latch writes to sound generator
+;  sound_data contains a copy of the byte written to the slow
+;  data bus
+;  R0=value written to latch (b0-b2=0)
+;  R3=BBC memory address (mem)
+;  R9=time in cycles until next clock interrupt
+;X R0-R2,R13 corrupted
+;  Exits via MOV PC,R14
+
+.sound_latch
+STR mem,memstore
+TST R0,#1<<3
+MOVNE PC,R14                  ; active low
+LDR R13,(sound_buffs_addr+12)
+STMFD R13!,{R3,R14}
+LDRB R0,sound_data            ; get the byte written
+TST R0,#1<<7
+BEQ sound_update              ; update the frequency
+MOV R1,R0,LSR#5
+AND R1,R1,#3                  ; channel number (0=tone3 3=noise)
+TST R0,#1<<4
+AND R0,R0,#&0F                ; data is in b0-b3
+BNE sound_volume              ; volume control
+TEQ R1,#3                     ; noise channel?
+STRNE R1,sound_channel        ; if not set current channel
+ADR R14,sound_freq0
+LDR R3,[R14,R1,LSL#2]         ; get the current frequency
+BIC R2,R3,#&0F                ; clear bottom 4 bits
+ORR R2,R2,R0                  ; new frequency
+STR R2,[R14,R1,LSL#2]         ; new frequency
+B sound_frequency
+.sound_update                 ; update frequency
+LDR R1,sound_channel          ; current channel
+ADR R14,sound_freq0
+LDR R3,[R14,R1,LSL#2]         ; get the current frequency
+AND R2,R3,#&0F                ; loose the top bits
+AND R0,R0,#&3F                ; b4-b9 of frequency
+ORR R2,R2,R0,LSL#4            ; add new high order bits
+STR R2,[R14,R1,LSL#2]         ; new frequency
+B sound_frequency
+;NB not sure whether you should update sound_channel here?
+.sound_volume                 ; R0=volume (15 off-0 max)
+RSB R0,R0,#15                 ; new vol 0=off 15=max now!
+ADR R14,sound_amp0
+LDRB R2,[R14,R1]              ; old volume
+TEQ R0,R2
+;BEQ sound_latch_end           ; volume hasn't changed
+STRB R0,[R14,R1]              ; write the new volume
+TEQ R1,#3
+BEQ sound_latch_end           ; ignore noise channel
+ADR R14,sound_freq0
+LDR R0,[R14,R1,LSL#2]         ; get frequency setting
+TEQ R0,#1
+BLEQ make_sound               ; it's speech
+B sound_latch_end
+.sound_frequency              ; R1=channel R2=new freq (10 bit)
+TEQ R1,#3                     ; R3=old freq (10 bit)
+BLEQ sound_noisefreq          ; Convert R2 to 10 bit format
+TEQ R2,#1                     ; check for speach
+BEQ sound_speach_start
+TEQ R3,#1
+BLEQ sound_speach_stop
+MOV R0,#&60000
+STMFD R13!,{R1}               ; save channel number
+MOV R1,R2                     ; denomenator
+BL div_mod                    ; R0=pitch accumulator inc corr R3
+LDMFD R13!,{R1}               ; restore channel number
+CMP R0,#0
+MOVLE R0,#0
+CMP R0,#&4000
+MOVGE R0,#&4000               ; R0=new pitch increment
+ADR R14,sound_pitch0
+LDR R2,[R14,R1,LSL#2]
+MOV R2,R2,LSR#16
+ORR R2,R0,R2,LSL#16           ; install new pitch increment
+STR R2,[R14,R1,LSL#2]
+TEQ R1,#2                     ; is it pitch channel 1
+BNE sound_latch_end           ; no
+LDR R0,sound_freq3            ; 3 bit freq setting of noise chan
+AND R0,R0,#3
+TEQ R0,#3                     ; is it based on channel 1?
+BNE sound_latch_end           ; no
+;BL sound_debug
+MOV R1,#3                     ; channel 0
+LDR R2,sound_freq3            ; channel 0 10-bit frequency
+B sound_frequency             ; update frequency for channel 0
+.sound_latch_end              ; EXIT
+;BL sound_debug                ; print up debug data
+LDMFD R13!,{R3,PC}            ; EXIT
+.sound_speach_start
+TEQ R3,#1
+BEQ sound_latch_end           ; already started
+BL sound_get_time
+ADR R0,sound_time0
+STR R2,[R0,R1,LSL#2]          ; time this channel last updated
+TEQ R1,#0
+;BLEQ log_start
+B sound_latch_end
+
+;E Called when speach stops
+;X Corrupts R0
+
+.sound_speach_stop
+TEQ R1,#0
+;BEQ log_end
+MOV PC,R14
+
+.memstore
+EQUD 0
+
+;E R9=Emulator time 'till next event
+;X R2=current time on the sound decrementing 2MHz clock
+;  R0 corrupted
+
+.sound_get_time
+LDR R0,memstore
+LDR R2,[R0,#min]
+SUB R2,R2,R9                  ; time passed since last event
+LDR R0,[R0,#sound_timer]
+SUB R2,R0,R2                  ; current time (dec at 2Mhz)
+MOV PC,R14
+
+;E Volume changed (not just been set to the same value!!!)
+;  This channel in speech mode.
+;  R2=the old volume before the change
+;  R1=BBC channel number (0-3) R9=time
+;X Buffer filled for manual amplitude modulation
+;  R0 corrupted
+
+.make_sound
+STMFD R13!,{R1-R5,R14}
+; TEQ R1,#0
+; LDMNEFD R13!,{R1-R5,PC}
+; LDRB R0,[mem,#&67]
+; LDRB R14,[mem,#&68]
+; ADD R0,R0,R14,LSL#8
+; LDRB R14,[R0,Y,LSR#24]
+; ADD R0,R0,Y
+; ADD R0,R0,R14,LSL#16
+; LDR R0,[mem,#&60]
+; BL log_word
+; MOV R0,R2
+; BL log_word
+MOV R4,R2,LSL#1               ; amplitude 0-30
+SUBS R4,R4,#15                ; amplitude -15 to 15
+MOVPL R0,#0
+MOVMI R0,#1                   ; sign bit
+RSBMI R4,R4,#0                ; now +ve (1-15)
+LDR R14,(sound_buffs_addr+4)  ; log amp table
+LDRB R4,[R14,R4]              ; VIDC amp
+EOR R4,R4,R0                  ; bung in sign to get sample
+BL sound_get_time             ; R2=current time
+ADR R14,sound_time0
+LDR R3,[R14,R1,LSL#2]         ; time this channel last updated
+SUBS R0,R3,R2                 ; time passed since last update
+MOVMI R3,R2                   ; clip if gone negative
+CMP R0,#&C000                 ; greater than one buffer fill?
+ADDGE R3,R2,#&C000            ; clip if so
+; BL log_word
+ADR R14,sound_filled0
+LDR R5,[R14,R1,LSL#2]         ; current offset in the buffer
+.make_sound_1
+ADR R14,sound_read0
+LDR R0,[R14,R1,LSL#2]         ; amount read to
+SUBS R0,R5,R0
+ADDMI R0,R0,#sound_buf_size%  ; amount in the buffer
+CMP R0,#512
+BGT make_sound_1              ; wait for output to catch up
+LDR R0,sound_buffs_addr
+ADD R0,R0,R1,LSL#sound_buf_size_log% ; address of buffer
+.make_sound_2
+SUB R3,R3,#96                 ; try and do another byte
+CMP R3,R2
+BLT make_sound_3              ; can't
+STRB R4,[R0,R5]               ; write out a byte
+; STMFD R13!,{R0}
+; MOV R0,R4
+; BL log_word
+; LDMFD R13!,{R0}
+ADD R5,R5,#1
+CMP R5,#sound_buf_size%
+MOVGE R5,#0                   ; wrap buffer offset
+B make_sound_2
+.make_sound_3
+ADD R3,R3,#96
+ADR R14,sound_filled0
+STR R5,[R14,R1,LSL#2]         ; new buffer offset
+ADR R14,sound_time0
+STR R3,[R14,R1,LSL#2]         ; new time last updated
+LDMFD R13!,{R1-R5,PC}
+
+;E R2=noise channel frequency (bbc format)
+;X R2=noise channel frequnecy (10 bit)
+;  Corrupts R0
+;  Don't need to clip since pitch inc can go up to &60000
+
+.sound_noisefreq
+AND R0,R2,#3
+TEQ R0,#3
+BEQ sound_usefreq2
+AND R0,R2,#7                  ; FB NF1 NF0
+ADR R2,sound_noisetab
+LDR R2,[R2,R0,LSL#2]
+MOV PC,R14
+.sound_usefreq2
+TST R2,#4
+LDR R2,sound_freq2            ; use tone generator 1 frequency
+;MOVEQ R2,R2,LSL#4             ; multiply if pulse channel
+;MOVNE R2,R2,LSR#2             ; divide if noise channel
+
+MOV R2,R2,LSL#4              ; changed 11/96 MRB
+
+MOV PC,R14
+.sound_noisetab
+EQUD &F1                      ; pulse high
+EQUD &1D5                     ; pulse med
+EQUD &3C6                     ; pulse low
+EQUD 0
+EQUD &1F                      ; noise high
+EQUD &A3                      ; noise med
+EQUD &100                     ; noise low
+EQUD 0
+
+.sound_channel      EQUD 0    ; current note channel (0-2)
+.sound_freq0        EQUD 0    ; frequency of channel 3 (10 bit)
+.sound_freq1        EQUD 0    ; frequency of channel 2
+.sound_freq2        EQUD 0    ; frequency of channel 1
+.sound_freq3        EQUD 0    ; frequency of channel 0 X FB NF1,0
+.sound_amp0         EQUB 0    ; amplitude of channel 3 0-15
+.sound_amp1         EQUB 0    ; amplitude of channel 2
+.sound_amp2         EQUB 0    ; amplitude of channel 1
+.sound_amp3         EQUB 0    ; amplitude of channel 0
+.sound_read0        EQUD 0    ; offset in buffer of start of
+.sound_read1        EQUD 0    ; unread data
+.sound_read2        EQUD 0    ; channels 0-3
+.sound_read3        EQUD 0    ;
+.sound_filled0      EQUD 0    ; offset in buf filled to chann 0
+.sound_filled1      EQUD 0    ; offset in buf filled to chann 1
+.sound_filled2      EQUD 0    ; offset in buf filled to chann 2
+.sound_filled3      EQUD 0    ; offset in buf filled to chann 3
+.sound_pitch0       EQUD 0    ; phase pitch channel 0
+.sound_pitch1       EQUD 0    ; phase pitch channel 1
+.sound_pitch2       EQUD 0    ; phase pitch channel 2
+.sound_pitch3       EQUD 0    ; phase pitch channel 3
+.sound_time0        EQUD 0    ; last time (R9) channel updated
+.sound_time1        EQUD 0    ; channel 1 (decrements as time
+.sound_time2        EQUD 0    ; channel 2  goes on)
+.sound_time3        EQUD 0    ; channel 3
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Fill sound  buffer                              ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;E R0=number of bytes to fill in buffer
+;  R5=bbc channel number
+;  R14 not usable (in IRQ mode)
+;  Return address on stack
+
+.sound_fillto
+STMFD R13!,{R1-R4,R11-R12}
+ADDS R3,R0,#0                 ; number of bytes to do
+LDMLEFD R13!,{R1-R4,R11-R12,PC} ; none
+ADR R4,sound_filled0
+LDR R1,[R4,R5,LSL#2]          ; current offset filled to
+LDR R11,sound_buffs_addr
+ADD R11,R11,R5,LSL#sound_buf_size_log% ; address of the buffer
+ADD R12,R11,#sound_buf_size%  ; end of the buffer
+ADD R11,R11,R1                ; address at which to start filling
+ADR R4,sound_pitch0
+LDR R1,[R4,R5,LSL#2]          ; get phase pitch inc
+ADR R4,sound_amp0
+LDRB R4,[R4,R5]               ; get BBC amp for this channel
+LDR R0,(sound_buffs_addr+4)   ; volume scaling table
+LDRB R4,[R0,R4]               ; scale volume to VIDC format
+RSB R4,R4,#(127<<1)           ; attenuation
+TEQ R5,#3                     ; noise channel?
+BEQ sound_fillto_noise
+ADR R0,sound_freq0
+LDR R0,[R0,R5,LSL#2]
+TEQ R0,#1
+BEQ sound_fillto_speach
+LDR R2,(sound_buffs_addr+8)   ; standard sample
+.sound_fillto_loop
+ADD R1,R1,R1,LSL#16           ; advance waveform
+LDRB R0,[R2,R1,LSR#24]
+SUBS R0,R0,R4
+MOVMI R0,#0
+STRB R0,[R11],#1              ; write next byte
+CMP R11,R12
+SUBGE R11,R12,#sound_buf_size% ; wrap the pointer
+SUBS R3,R3,#1
+BHI sound_fillto_loop
+ADR R4,sound_pitch0
+STR R1,[R4,R5,LSL#2]          ; save new pitch inc
+.sound_fillto_end
+SUB R12,R12,#sound_buf_size%
+SUB R11,R11,R12               ; offset in buffer filled to
+ADR R12,sound_filled0
+STR R11,[R12,R5,LSL#2]
+LDMFD R13!,{R1-R4,R11-R12,PC}
+.sound_fillto_noise
+LDR R2,sound_freq3
+TST R2,#1<<2                  ; look at FB
+LDREQ R2,(sound_buffs_addr+8)
+ADDEQ R2,R2,#&100             ; pulse sample
+BEQ sound_fillto_loop         ; periodic noise
+STMFD R13!,{R6-R7}            ; need two more registers
+LDR R2,sound_noiseseed        ; white noise seed
+RSB R4,R4,#(127<<1)           ; recover amplitude
+EOR R0,R4,#1                  ; other sign
+LDR R6,sound_noiseeor         ; eor
+.sfn_loop                     ; white noise loop
+MOV R7,R1
+ADD R1,R1,R1,LSL#16
+EOR R7,R7,R1
+TST R7,#&40000000
+BEQ sfn_skip                  ; bit hasn't changed so don't adv
+MOVS R2,R2,LSR#1
+EORCS R2,R2,R6
+BICCC R1,R1,#&40000000
+ORRCS R1,R1,#&40000000
+.sfn_skip
+TST R1,#&40000000
+STREQB R0,[R11],#1
+STRNEB R4,[R11],#1
+CMP R11,R12
+SUBGE R11,R12,#sound_buf_size% ; wrap the pointer
+SUBS R3,R3,#1
+BHI sfn_loop
+LDMFD R13!,{R6-R7}
+STR R2,sound_noiseseed
+STR R1,sound_pitch3
+B sound_fillto_end
+.sound_fillto_speach          ; direct amp modification
+ADR R4,sound_amp0
+LDRB R4,[R4,R5]               ; get BBC amp for this channel
+MOV R4,R4,LSL#1               ; 0-30
+SUBS R4,R4,#15                ; amplitude -15 to 15
+MOVPL R0,#0
+MOVMI R0,#1                   ; sign bit
+RSBMI R4,R4,#0                ; now +ve (1-15)
+LDR R1,(sound_buffs_addr+4)   ; log amp table
+LDRB R4,[R1,R4]               ; VIDC amp
+EOR R4,R4,R0                  ; bung in sign to get sample
+ADR R2,sound_time0
+LDR R0,[R2,R5,LSL#2]          ; get time last updated
+.sound_fillto_speach_1
+STRB R4,[R11],#1
+SUB R0,R0,#96
+CMP R11,R12
+SUBGE R11,R12,#sound_buf_size% ; wrap the pointer
+SUBS R3,R3,#1
+BHI sound_fillto_speach_1
+;STR R0,[R2,R5,LSL#2]
+B sound_fillto_end
+.sound_noiseseed EQUD &446D6954 ; white noise seed (R2)
+.sound_noiseeor  EQUD &82D4E1B8 ; white noise eor (R6)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Voice generator                                 ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.sound_buffs_addr
+EQUD 0                        ; address of buffer
+EQUD 0                        ; volume table
+EQUD 0                        ; sample address
+EQUD 0                        ; stack address
+
+; SCCB
+; #0 b0-b7 Arc volume (R1)
+; #4 phase accumulator (b0-b15=inc) (R2)
+; #8 -
+; #12 number of buffer fills left to do (R4)
+; #16 bbc channel number (0-3) (R5)
+; #20 Volume scaled log amp table (R6)
+
+.sound_voiceheader
+B sound_vfill
+B sound_vfill
+B sound_vfill
+B sound_vgateoff
+B sound_vinstantiate
+LDMFD R13!,{PC}
+LDMFD R13!,{PC}
+EQUD sound_voicename-sound_voiceheader
+.sound_voicename
+EQUS "6502Emulator"+CHR$0
+ALIGN
+
+;E Return address on stack
+;  R14 not usable (in IRQ mode)
+
+.sound_vfill
+LDMFD R9,{R1-R6}              ; R5=bbc channel number
+ADR R1,sound_read0
+LDR R2,[R1,R5,LSL#2]          ; offset of unread data
+ADR R1,sound_filled0
+LDR R0,[R1,R5,LSL#2]          ; offset buffer filled to
+SUBS R0,R0,R2
+ADDMI R0,R0,#sound_buf_size%  ; amount in the buffer
+RSBS R0,R0,#208               ; amount extra needed
+BLE sound_fill_ret
+ADR R1,sound_fill_ret
+STMFD R13!,{R1}               ; put return address on stack
+B sound_fillto                ; ensure the buffer full enough
+.sound_fill_ret
+ADR R1,sound_read0
+LDR R0,[R1,R5,LSL#2]          ; off of unread data
+ADD R2,R0,#208                ; new offset after we've finished
+CMP R2,#sound_buf_size%
+SUBGE R2,R2,#sound_buf_size%  ; wrap it
+STR R2,[R1,R5,LSL#2]
+LDR R2,sound_buffs_addr
+ADD R2,R2,R5,LSL#sound_buf_size_log% ; address of buffer
+ADD R3,R2,#sound_buf_size%    ; end of buffer
+ADD R2,R2,R0                  ; current address
+.sound_fill_loop              ; NB Amp already scaled
+LDRB R0,[R2],#1               ; get next byte
+STRB R0,[R12],R11
+CMP R2,R3
+SUBGE R2,R3,#sound_buf_size%
+LDRB R0,[R2],#1               ; get next byte
+STRB R0,[R12],R11
+CMP R2,R3
+SUBGE R2,R3,#sound_buf_size%
+LDRB R0,[R2],#1               ; get next byte
+STRB R0,[R12],R11
+CMP R2,R3
+SUBGE R2,R3,#sound_buf_size%
+LDRB R0,[R2],#1               ; get next byte
+STRB R0,[R12],R11
+CMP R2,R3
+SUBGE R2,R3,#sound_buf_size%
+CMP R12,R10
+BLT sound_fill_loop
+MOV R0,#8                     ; voice still active
+LDMFD R13!,{PC}
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; print out debug data - current channel settings ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;X R1=channel being changed
+
+.sound_debug
+STMFD R13!,{R0-R1,R14}
+SWI &11F
+SWI &100
+MOV R0,R1
+SWI "XOS_WriteC"              ; jump to row n
+MOV R0,R1
+BL sound_debug2               ; channel
+ADR R14,sound_freq0
+LDR R0,[R14,R1,LSL#2]
+BL sound_debug2               ; freq
+ADR R14,sound_amp0
+LDRB R0,[R14,R1]
+BL sound_debug2               ; amp
+LDMFD R13!,{R0-R1,PC}
+
+]
+=""
+
+REM MISC STUFF
+
+DEF FNsound_misc
+[OPT p
+
+;E R0=number to print
+;X Number printed
+
+.sound_debug2       ; output number in R0 to debug
+STMFD R13!,{R0-R2,R14}
+ADR R1,sound_debug_buf
+MOV R2,#16
+SWI "XOS_ConvertHex8"
+SWI "XOS_Write0"
+SWI &120
+LDMFD R13!,{R0-R2,PC}
+.sound_debug_buf
+FNsound_mem(16)
+
+;E R0=channel number-1 (0-7)
+;  Return address on top of stack
+
+.sound_vinstantiate
+STMFD R13!,{R0-R5}
+MOV R5,R0                     ; save channel number
+MOV R0,#0
+MOV R1,#0
+MOV R2,#0
+MOV R3,#0
+MOV R4,#0
+SWI "XSound_Configure"
+ADD R0,R5,#1                  ; channel number
+MOV R1,#20
+LDR R2,[R3,#12]
+SWI "XSound_WriteControlBlock"          ; volume scaled log amp
+ADD R0,R5,#1
+MOV R1,#16
+MOV R2,R5                     ; bbc channel number
+CMP R2,#4
+MOVCS R2,#0                   ; clip
+SWI "XSound_WriteControlBlock"
+LDMFD R13!,{R0-R5,PC}
+
+.sound_vgateoff
+MOV R0,#0
+.sound_gateoff_loop
+STRB R0,[R12],R11
+STRB R0,[R12],R11 
+STRB R0,[R12],R11
+STRB R0,[R12],R11
+CMP R12,R10
+BLT sound_gateoff_loop
+MOV R0,#1
+LDMFD R13!,{PC}
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Divide routine                                  ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+\E R0=numerator   R1=denominator
+\X R0=R0 Div R1   R2=R0 Mod R1    R0-R3 corrupted |
+
+.div_mod
+MOV R2,#0                     \ clear remainder
+ADDS R0,R0,R0                 \ double numerator
+RSB R1,R1,#0                  \ negate denom
+MOV R3,#32
+.div_mod_1
+ADCS R2,R1,R2,LSL#1:SUBCC R2,R2,R1:ADCS R0,R0,R0
+ADCS R2,R1,R2,LSL#1:SUBCC R2,R2,R1:ADCS R0,R0,R0
+ADCS R2,R1,R2,LSL#1:SUBCC R2,R2,R1:ADCS R0,R0,R0
+ADCS R2,R1,R2,LSL#1:SUBCC R2,R2,R1:ADCS R0,R0,R0
+SUB R3,R3,#4
+TEQ R3,#0
+BNE div_mod_1                 \ DO NOT CORRUPT CARRY
+MOVS PC,R14
+
+.log_start
+STMFD R13!,{R0-R2,R14}
+MOV R0,#&88
+ADR R1,log_fname
+SWI "OS_Find"
+STR R0,log_handle
+LDMFD R13!,{R0-R2,PC}
+.log_fname EQUS "$.TMP.LogFile"+CHR$0
+ALIGN
+.log_handle EQUD 0
+.log_temp EQUD 0
+
+.log_end
+STMFD R13!,{R0-R2,R14}
+MOV R0,#0
+LDR R1,log_handle
+SWI "OS_Find"
+LDMFD R13!,{R0-R2,PC}
+
+; R0=word to log
+
+.log_word
+STMFD R13!,{R0-R5,R14}
+STR R0,log_temp
+MOV R0,#2
+LDR R1,log_handle
+ADR R2,log_temp
+MOV R3,#4
+SWI "OS_GBPB"
+LDMFD R13!,{R0-R5,PC}
+
+]
+=""
+
+DEF FNsound_mem(a%)
+P%+=a%:O%+=a%
+=""

@@ -1,0 +1,21 @@
+DIM mode5table 256*4*2
+DIM pal%(3)
+pal%()=0,1,2,3
+mask%=%10001
+FOR I%=0 TO 255
+A%=0
+B%=0
+FOR J%=0 TO 1
+col%=(I%>>(3-J%)) AND mask%
+col%=( (col%) OR (col%>>3) ) AND %11
+A%=A% OR pal%( col% )<<(J%*16)
+NEXT
+FOR J%=2 TO 3
+col%=(I%>>(3-J%)) AND mask%
+col%=( (col%) OR (col%>>3) ) AND %11
+B%=B% OR pal%( col% )<<((J%-2)*16)
+NEXT
+mode5table!(I%*8)=A% OR (A%<<4) OR (A%<<8) OR (A%<<12)
+mode5table!(I%*8+4)=B% OR (B%<<4) OR (B%<<8) OR (B%<<12)
+NEXT
+OSCLI "SAVE <6502Em$Dir>.Tables.mode5tab "+STR$~mode5table+" +"+STR$~(2048)

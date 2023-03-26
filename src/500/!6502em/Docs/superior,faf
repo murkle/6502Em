@@ -1,0 +1,151 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+
+<html>
+
+ <head>
+
+  <title>
+   Murklesoft: Software for Windows and RISC OS
+  </title> 
+
+  <meta name="description" content="Murklesoft has writing software since 1995">
+
+  <meta name="keywords" content="Borcherds, emulators, dynamic, gemoetry, 6502Em, Z80Em,
+              6502, Z80, Cabriolet, minesweep, winclip">
+
+  <meta http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+
+ </head>
+
+ <body background="background.gif">
+
+  <p align=center>  
+   <font size="+3"><b>Murklesoft</b></font><br>
+   <font size="+2"><b><i>Software for Windows and RISC OS</i></b></font>
+  </p>
+
+  <hr style="color: #CC9933">
+
+  <table>
+   <tr>
+
+    <td valign="top" width=450>
+     <a href="/murklesoft/index.html">Home</a><br>
+     Software for Windows<br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/windows/cabriolet.html">Cabriolet Dynamic Geometry</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/windows/pairs.html">Pairs</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/windows/tsunami.html">Tsunami/Griddler Solver</a><br>
+     Software for RISC OS<br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/cabriolet.html">Cabriolet Dynamic Geometry</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/6502em.html">6502Em</a><br>
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="iyonix.html">Iyonix</a><br>
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="history.html">History</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="keylayout.html">KeyLayout</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="keys.html">Keys</a><br>
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="menus.html">Menus</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="opcode07.html">Opcode07</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="ripdfs.html">RipDFSDisc</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="roms.html">ROMs</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="scripts.html">Scripts</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="snaps.html">Snapshots</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="superior.html">Superior</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="technical.html">Technical</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="trouble.html">Trouble</a><br> 
+     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A HREF="virtualdfs.html">VirtualDFS</a><br> 
+
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/Z80em.html">Z80Em</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/winclip.html">WinClip</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/minesweep.html">Minesweep</a><br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/riscos/misc.html">Miscellaneous</a><br>
+     Software for Linux<br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/linux/cabriolet.html">Cabriolet Dynamic Geometry</a><br>
+     Software for Newton<br>
+     &nbsp;&nbsp;&nbsp;<a href="/murklesoft/newton/cabriolet.html">Cabriolet Dynamic Geometry</a><br>
+     <a href="/murklesoft/pricelist.html">Pricelist</a><br>
+     <a href="/murklesoft/contact.html">Contact</a><br>
+     <a href="/murklesoft/links.html">Links</a>
+    </td>
+
+    <td valign="top">
+     <p align=center><font size="+2"><b><i>6502Em</i></b></font></p>
+     <p align=center><img src="/murklesoft/riscos/exile.gif" alt="man from Exile"></p>  
+<h2>Superior Software Games in 6502Em</h2>
+
+<h3>Exile - Master Compact Version</h3>
+
+<p>This will run happily in Master 128 or Master Compact mode.
+<p>Alternatively, the supplied application !RunExile (in the Utils
+directory) will allow it to be run with just the BBC B ROMs (OS 1.2).
+
+<h3>Repton Infinity - Master Compact version</h3>
+
+<p>Repton Infinity will only run in Master Compact mode.
+<p>You should double-click on 'Infinity' to run it.
+
+<h3>Play it Again Sam - Master Compact version</h3>
+
+<p>This version of Citadel will only run with the Master 128
+or Compact ROMs.
+<p>(The 5.25" version works fine under OS 1.2)
+
+<h3>Play it Again Sam 5 - Master Compact version</h3>
+
+<p>Imogen will run happily in Master Compact mode.
+<p>Alternatively, the supplied application !RunImogen (in the Utils
+directory) will allow it to be run with just the BBC B ROMs (OS 1.2).
+
+<h3>Play it Again Sam 10 - Master Compact version</h3>
+
+<p>This version of Zalaga will only run with the Master 128
+or Compact ROMs.
+<p>(The original Aardvark version of Zalaga works on OS 1.2)
+
+<h3>Play it Again Sam 12 - Master Compact version</h3>
+
+<p>By Fair Means or Foul does not work in BBC B mode as supplied
+<p>To patch it, first copy the files BOOT,0,1,2,3,4,5,6,7,8,9,A,B,C
+onto another disc.
+<p>Then load !6502Em
+<p>Then double-click on the copy of BOOT (to set the emulator's CSD)
+<p>Then press Ctrl-Break
+<p>Then type:
+
+<pre>*LOAD BOOT
+?&amp;49C=&amp;EA
+?&amp;49D=&amp;EA
+?&amp;49E=&amp;EA
+*SAVE BOOT 400+264 465
+</pre>
+
+<p>Then press f12 (to exit the emulator)
+<p>Then double-click on BOOT again, and it should then
+run normally
+
+<h3>Play it Again Sam 15 - Master Compact version</h3>
+
+<p>Network uses a BASIC IV feature (VDU23,1|) so to
+run it in BBC B mode, just double-click on 'NETWOR0'.
+    <td width=15>
+    </td>
+
+   </tr>
+  </table>
+
+  <p align=right>
+   <font size="-2">
+    <font color="#CC9933">
+     ______________________________________________________<br>
+    </font>
+    <a href="/murklesoft/contact.html">Murklesoft</a>: Software for Windows and RISC OS<br>
+    <a href="http://www.borcherds.co.uk/murklesoft/">www.borcherds.co.uk/murklesoft/</a>
+   </font>
+  </p>
+
+  <p align=right>
+   <a href="http://validator.w3.org/check/referer"><img border="0"
+    src="valid-html40.gif" alt="Valid HTML 4.0!" height="31" width="88"></a>
+  </p>
+
+ </body>
+
+</html>

@@ -1,0 +1,1475 @@
+REM > Screen
+
+DEFFNscreen
+
+IF electron% THEN
+screen_mask%=%111111
+screen_shift%=1
+ELSE
+screen_mask%=%11111
+screen_shift%=3
+ENDIF
+
+[OPTp
+
+.strb
+.strb3000 ; greater than 3000
+CMP R1,#&8000
+BGE strb8000
+
+.update_pixel
+.strb_screen ; between 3000 and 8000
+
+]
+IF master THEN
+[OPTp
+
+LDRB R12,[mem,#ACCCON]
+
+CMP zpc,#&C000 << 16
+MOVLT R13,R12,LSR#1
+MOVGE R13,R12
+CMP zpc,#&E000 << 16
+MOVGE R13,R12,LSR#1    ; now bit 1 of R13 is what
+                       ; we must look at
+
+TST R13,#%10
+SUBNE R2,mem,#(&3000+&10000) ; shadow screen memory
+STRNEB R0,[R2,R1]
+STREQB R0,[mem,R1]
+
+EOR R12,R12,R13,LSR#1
+TST R12,#%1           ; are we writing to displayed memory?
+MOVNE PC,R14
+CMP R1,F,LSR#16 ; wrap_addr
+MOVLT PC,R14
+]
+ELSE
+[OPTp
+STRB R0,[mem,R1]
+]
+ENDIF
+
+IF electron% THEN
+[OPTp
+TST F,#1 << 12
+MOVNE PC,R14 ; "mode 7"
+]
+ELSE
+[OPTp
+LDRB R12,[mem,#crt_regs+3]
+TST R12,#1 << 4
+TSTNE R1,#%100
+MOVNE PC,R14 ; fortress
+]
+ENDIF
+
+[OPTp
+LDRB R12,[mem,#crt_regs+13]
+LDRB R2,[mem,#crt_regs+12]
+AND R2,R2,#%111111
+ADD R12,R12,R2,LSL#8
+]
+IF electron% THEN [OPTp:MOV R12,R12,LSR#2:]
+[OPTp
+;MOV R12,R12,LSL#3
+
+
+SUBS R1,R1,R12,LSL#3         ; addr-screenstart
+BGE wrap_skip2
+;LDR R13,wrap_addr
+ADD R1,R1,#&8000
+SUBS R1,R1,F,LSR#16 ; wrap_addr
+MOVMI PC,R14
+.wrap_skip2
+
+LDRB R12,[mem,#crt_regs+1] ; horiz. chars
+LDRB R13,[mem,#crt_regs+6] ; vert. chars
+MUL R13,R12,R13
+MOV R13,R13,LSL#3 ; screen size
+CMP R1,R13
+MOVGE PC,R14
+STR R14,[mem,#scratch]
+;RJW was here...
+STR R1,[mem,#scratch+4]
+AND R14,R1,#%111
+MOV R1,R1,LSR#3
+
+CMP   R1,R12,LSL#7
+SUBGE R1,R1,R12,LSL#7
+ADDGE R14,R14,#1<<10
+
+CMP   R1,R12,LSL#6
+SUBGE R1,R1,R12,LSL#6
+ADDGE R14,R14,#1<<9
+
+CMP   R1,R12,LSL#5
+SUBGE R1,R1,R12,LSL#5
+ADDGE R14,R14,#1<<8
+
+CMP   R1,R12,LSL#4
+SUBGE R1,R1,R12,LSL#4
+ADDGE R14,R14,#1<<7
+
+CMP   R1,R12,LSL#3
+SUBGE R1,R1,R12,LSL#3
+ADDGE R14,R14,#1<<6
+
+CMP   R1,R12,LSL#2
+SUBGE R1,R1,R12,LSL#2
+ADDGE R14,R14,#1<<5
+
+CMP   R1,R12,LSL#1
+SUBGE R1,R1,R12,LSL#1
+ADDGE R14,R14,#1<<4
+
+CMP   R1,R12
+SUBGE R1,R1,R12
+ADDGE R14,R14,#1<<3
+
+;LDR R12,[mem,#patch_on]
+;CMP R12,#0 : ;BNE patch
+TST F,#1 << 8 : BNE patch_pixel2 ; patch_pixel2
+
+; RJW was here (twice)
+LDRB R12,[mem,#fe20]
+MOVS R12,R12,ASR#2
+; I assume Prob(CC) > Proc(CS)
+LDRCC PC,updatepixelV
+MOV PC,R14
+
+.patch_pixel2
+ADR R13,patch_exit2
+B patch_pixel
+
+.poke_updatepixelV
+LDRB R12,[mem,#fe20]
+
+AND R12,R12,#7<<2
+ADR R2,uptab
+LDR R12,[R2,R12]
+ADD R2,R2,R12
+STR R2,updatepixelV
+MOV PC,R14
+
+.patch_exit2
+B updatepixel1 ; hack
+
+.uptab
+EQUD updatepixel4-uptab ;000 00
+EQUD updatepixel5-uptab ;001 00
+EQUD updatepixel4-uptab ;010 00
+EQUD updatepixel0-uptab ;011 00
+EQUD updatepixel1-uptab ;100 00
+EQUD updatepixel2-uptab ;101 00
+EQUD updatepixel1-uptab ;110 00
+EQUD updatepixel0-uptab ;111 00
+
+.updatepixelV
+EQUD 0
+
+.updatepixel0
+ADR R13,mode0tab ; ********* new for 32bit
+B updatepixel012 ; ********* new for 32bit
+
+; RJW was here
+ADD R14,R14,R14,LSL#2 ;
+
+ADD R14,R1,R14,LSL#4 ; offset in arc screen of byte
+
+;ADR R13,mode0tab ;******** removed (moved up) for 32bit
+LDR R0,[R13,R0] ; load 1 byte from table
+
+LDR R13,[mem,#arc_screenstart]
+STRB R0,[R13,R14]
+LDR PC,[mem,#scratch]
+
+.mode0tab
+]
+P%+=&800 :REM 32bit change ***** =8*the size used previously
+O%+=&800 :REM 32bit change ***** =8*the size used previously
+[OPTp
+.mode0tab_orig ;****** new 32bit
+]
+P%+=&800       :REM ****** new 32bit
+O%+=&800       :REM ****** new 32bit
+[OPTp
+.updatescreen0
+FNADR(8,mode0tab) ;****** new 32bit
+B updatescreen012 ;****** new 32bit
+
+
+LDRB R0,[mem,#lastmode]
+CMP R0,#99
+BEQ skip_mode0
+;SWI &116
+;SWI &100 ; MODE 0
+FNchangemode ;********** new 32bit *********
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode]
+.skip_mode0
+
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+
+FNshadow
+
+;ADR R8,mode0tab ;*********** 32bit removed
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+
+ADD R7,R7,R13
+ADD R11,R13,#&8000
+ADD R12,R12,R13
+
+.loop2
+.loop1
+
+;RJW; Optimised this to save time, at the expense of R10,R14
+LDMIA R7!,{R0,R14}
+AND R10,R14,#&FF
+LDRB R5,[R8,R10]
+STRB R5,[R9,#80*4]
+AND R10,R14,#&FF00
+LDRB R5,[R8,R10,LSR#8]
+STRB R5,[R9,#80*5]
+AND R10,R14,#&FF0000
+LDRB R5,[R8,R10,LSR#16]
+STRB R5,[R9,#80*6]
+LDRB R5,[R8,R14,LSR#24]
+STRB R5,[R9,#80*7]
+
+AND R10,R0,#&FF00
+LDRB R5,[R8,R10,LSR#8]
+STRB R5,[R9,#80]
+AND R10,R0,#&FF0000
+LDRB R5,[R8,R10,LSR#16]
+STRB R5,[R9,#80*2]
+LDRB R5,[R8,R0,LSR#24]
+STRB R5,[R9,#80*3]
+AND R10,R0,#&FF
+LDRB R5,[R8,R10]
+STRB R5,[R9],#1
+
+CMP R7,R11 : MOVEQ R7,R12
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+LDRB R2,[R6,#1] ; no of horiz chars
+ADD R9,R9,#640 : SUB R9,R9,R2
+SUBS R4,R4,R2 ;,LSL#3 ; #640
+BHI loop2
+
+
+LDMEA mem,{R4-R11,PC} ;*********32bit removed ^
+
+
+.updatepixel1
+ADR R13,mode1tab ;**********new 32bit
+
+.updatepixel012 ;**********new 32bit
+
+;RJW was here
+ADD R14,R14,R14,LSL#2 ;
+
+ADD R14,R1,R14,LSL#4 ; offset in arc screen of byte
+
+MOV R14,R14,LSL#3 ;*************new 32bit
+
+;LDR R0,[R13,R0] ; load 1 byte from table ********* removed 32bit
+LDR R1,[R13,R0,LSL#3] ; load first word ********* new 32 bit
+
+ADD R13,R13,#4  ; ********** new 32 bit
+LDR R0,[R13,R0,LSL#3] ; second   ********** new 32 bit
+
+LDR R13,[mem,#arc_screenstart]
+ADD R14,R14,R13 ;*********** new for 32bit
+STR R1,[R14]    ;*********** new for 32bit
+STR R0,[R14,#4] ;*********** new for 32bit
+;STRB R0,[R13,R14] ******** removed 32bit
+
+
+LDR PC,[mem,#scratch]
+
+.mode1tab
+]
+P%+=&800 :REM 32bit change ***** =8*the size used previously
+O%+=&800 :REM 32bit change ***** =8*the size used previously
+[OPTp
+.mode1tab_orig ;****** new 32bit
+]
+P%+=&800 :REM ****** new 32bit
+O%+=&800 :REM ****** new 32bit
+[OPTp
+
+.updatescreen1
+FNADR(8,mode1tab) ;****** new 32bit
+
+.updatescreen012 ;****** new 32bit
+LDRB R0,[mem,#lastmode]
+CMP R0,#99       ;****** was #1, now #99 in 32bit
+BEQ skip_mode1
+;SWI &116          ;********removed in 32bit
+;SWI &101 ; MODE 1  ********removed in 32bit
+FNchangemode ;****** new 32bit
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode] ;****** was #1, now #99 in 32bit
+.skip_mode1
+
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+FNshadow
+
+;ADR R8,mode1tab ********removed 32bit
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6]
+MUL R4,R2,R11
+MOV R4,R4,LSL#3
+
+ADD R7,R7,R13
+ADD R11,R13,#&8000
+ADD R12,R12,R13
+
+;MOV R4,R2,LSL#8
+;MOV R4,#&5000
+.loop2
+;MOV R2,#80
+.loop1
+
+;RJW;Optimised to improve speed at expense of R10,R14
+LDMIA R7!,{R10,R14}
+;AND R0,R14,#&FF          *** removed 32bit *****
+;LDRB R5,[R8,R0]          *** removed 32bit *****
+;STRB R5,[R9,#80*4]       *** removed 32bit *****
+;AND R0,R14,#&FF00        *** removed 32bit *****
+;LDRB R5,[R8,R0,LSR#8]    *** removed 32bit *****
+;STRB R5,[R9,#80*5]       *** removed 32bit *****
+;AND R0,R14,#&FF0000      *** removed 32bit *****
+;LDRB R5,[R8,R0,LSR#16]   *** removed 32bit *****
+;STRB R5,[R9,#80*6]       *** removed 32bit *****
+;LDRB R5,[R8,R14,LSR#24]  *** removed 32bit *****
+;STRB R5,[R9,#80*7]       *** removed 32bit *****
+;                         *** removed 32bit *****
+;AND R0,R10,#&FF00        *** removed 32bit *****
+;LDRB R5,[R8,R0,LSR#8]    *** removed 32bit *****
+;STRB R5,[R9,#80]         *** removed 32bit *****
+;AND R0,R10,#&FF0000      *** removed 32bit *****
+;LDRB R5,[R8,R0,LSR#16]   *** removed 32bit *****
+;STRB R5,[R9,#80*2]       *** removed 32bit *****
+;LDRB R5,[R8,R10,LSR#24]  *** removed 32bit *****
+;STRB R5,[R9,#80*3]       *** removed 32bit *****
+;AND R0,R10,#&FF          *** removed 32bit *****
+;LDRB R5,[R8,R0]          *** removed 32bit *****
+;STRB R5,[R9],#1          *** removed 32bit *****
+
+AND R0,R14,#&FF                                  ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*4*8]                              ;new 32b **********
+AND R0,R14,#&FF00 : MOV R0,R0,LSR#8              ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*5*8]                              ;new 32b **********
+AND R0,R14,#&FF0000 : MOV R0,R0,LSR#16           ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*6*8]                              ;new 32b **********
+MOV R0,R14,LSR#24                                ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+MOV R0,#80*7:STR R5,[R9,R0,LSL#3] ; #80*7*8]     ;new 32b **********
+                                                 ;new 32b **********
+AND R0,R10,#&FF00 : MOV R0,R0,LSR#8              ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*8]                                ;new 32b **********
+AND R0,R10,#&FF0000 : MOV R0,R0,LSR#16           ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*2*8]                              ;new 32b **********
+MOV R0,R10,LSR#24                                ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*3*8]                              ;new 32b **********
+AND R0,R10,#&FF                                  ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9],#4                                   ;new 32b **********
+
+ADD R8,R8,#4                                     ;new 32b **********
+                                                 ;new 32b **********
+AND R0,R14,#&FF                                  ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*4*8]                              ;new 32b **********
+AND R0,R14,#&FF00 : MOV R0,R0,LSR#8              ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*5*8]                              ;new 32b **********
+AND R0,R14,#&FF0000 : MOV R0,R0,LSR#16           ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*6*8]                              ;new 32b **********
+MOV R0,R14,LSR#24                                ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+MOV R0,#80*7:STR R5,[R9,R0,LSL#3] ; #80*7*8]     ;new 32b **********
+                                                 ;new 32b **********
+AND R0,R10,#&FF00 : MOV R0,R0,LSR#8              ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*8]                                ;new 32b **********
+AND R0,R10,#&FF0000 : MOV R0,R0,LSR#16           ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*2*8]                              ;new 32b **********
+MOV R0,R10,LSR#24                                ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9,#80*3*8]                              ;new 32b **********
+AND R0,R10,#&FF                                  ;new 32b **********
+LDR R5,[R8,R0,LSL#3]                             ;new 32b **********
+STR R5,[R9],#4                                   ;new 32b **********
+                                                 ;new 32b **********
+SUB R8,R8,#4                                     ;new 32b **********
+
+CMP R7,R11 : MOVEQ R7,R12
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+LDRB R2,[R6,#1] ; no of horiz chars
+
+;ADD R9,R9,#640 ; SUB R9,R9,R2        ;***** removed 32b
+ADD R9,R9,#640*8 : SUB R9,R9,R2,LSL#3 ;***** new 32b
+SUBS R4,R4,R2,LSL#3 ; #640
+BHI loop2
+
+LDMEA mem,{R4-R11,PC} ;removed ^ ************* 32b
+
+.updatepixel2
+ADR R13,mode2tab ;****** new 32b
+B updatepixel012 ;****** new 32b
+
+; RJW was here
+ADD R14,R14,R14,LSL#2 ; R14 * 5
+
+ADD R14,R1,R14,LSL#4 ; offset in arc screen of byte
+
+;ADR R13,mode2tab **************** 32b moved up to above
+LDR R0,[R13,R0,LSL#2] ; load 4 bytes from table
+
+LDR R13,[mem,#arc_screenstart]
+STR R0,[R13,R14,LSL#2]
+;MOV R0,R0,LSR#8
+;ADD R14,R14,#1
+;STRB R0,[R13,R14]
+LDR PC,[mem,#scratch]
+
+
+;.scratch
+;EQUD 0
+;EQUD 0
+;EQUD 0
+;EQUD 0
+
+
+;.wrap_addr
+;EQUD &4000
+
+.updatescreen2
+ADR R8,mode2tab       ;********* new 32b
+B updatescreen012     ;********* new 32b
+
+LDRB R0,[mem,#lastmode]
+CMP R0,#99            ;********* was 12, now 99 32b
+BEQ skip_mode2
+SWI &116
+SWI &100+12 ; MODE 12
+FNchangemode          ;********* new 32b
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode]            ;********* was 12, now 99 32b
+.skip_mode2
+
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+FNshadow
+
+;ADR R8,mode2tab     **************** removed 32b
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6] ; no of vertical chars
+MUL R4,R2,R11
+MOV R4,R4,LSL#3
+
+ADD R7,R7,R13
+ADD R11,R13,#&8000
+ADD R12,R12,R13
+
+;MOV R4,R2,LSL#8
+.loop2
+;MOV R2,#80
+.loop1
+
+; RJW was here
+LDMIA R7!,{R10,R14}
+AND R0,R14,#&FF
+LDR R5,[R8,R0,LSL#2]
+STR R5,[R9,#320*4]
+AND R0,R14,#&FF00
+LDR R5,[R8,R0,LSR#6]
+STR R5,[R9,#320*5]
+AND R0,R14,#&FF0000
+LDR R5,[R8,R0,LSR#14]
+STR R5,[R9,#320*6]
+AND R0,R14,#&FF000000
+LDR R5,[R8,R0,LSR#22]
+STR R5,[R9,#320*7]
+
+AND R0,R10,#&FF00
+LDR R5,[R8,R0,LSR#6]
+STR R5,[R9,#320]
+AND R0,R10,#&FF0000
+LDR R5,[R8,R0,LSR#14]
+STR R5,[R9,#320*2]
+AND R0,R10,#&FF000000
+LDR R5,[R8,R0,LSR#22]
+STR R5,[R9,#320*3]
+AND R0,R10,#&FF
+LDR R5,[R8,R0,LSL#2]
+STR R5,[R9],#4
+
+CMP R7,R11 : MOVEQ R7,R12
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+LDRB R2,[R6,#1] ; no of horiz chars
+ADD R9,R9,#320*8:SUB R9,R9,R2,LSL#2
+SUBS R4,R4,R2,LSL#3 ; #640
+BGT loop2
+
+LDMEA mem,{R4-R11,PC} ;***********removed ^ 32b
+
+.mode2tab
+]
+O%+=&800 :REM 32bit change ***** =2*the size used previously
+P%+=&800 :REM 32bit change ***** =2*the size used previously
+[OPTp
+.mode2tab_orig       ;****** new 32bit
+]
+O%+=&800       :REM ****** new 32bit
+P%+=&800       :REM ****** new 32bit
+[OPTp
+.update_palette2       ;****** new 32bit
+
+
+FNADR(0,mode2tab) : ;SUB R10,R0,#1 ***** new 32b
+ADD R1,R0,#&800 ; mode2tab_orig       ;****** new 32bit
+SUB R6,mem,#-pal_regs       ;****** new 32bit
+
+MOV R5,#2048:SUB R5,R5,#4       ;****** new 32bit
+
+.update_mode2palette_loop       ;****** new 32bit
+
+;LDRB R9,[R1,R5]                          ****** new but removed 32b
+;AND R9,R9,#%1111                         ****** new but removed 32b
+;LDRB R7,[R6,R9]                          ****** new but removed 32b
+;EOR R7,R7,#%01110111                     ****** new but removed 32b
+;STRB R7,[R0,R5]                          ****** new but removed 32b
+;STRB R7,[R10,R5] ; two bytes in mode2tab ****** new but removed 32b
+
+LDRB R9,[R1,R5]                      ;****** new 32b
+LDRB R7,[R6,R9] ; read palette entry ;****** new 32b
+AND R7,R7,#%1111
+EOR R7,R7,#%0111 : ADD R7,R7,R7,LSL#8 : ADD R9,R7,R7,LSL#16  ;****** new 32b
+;ADR R9,mode15colsW                                    ;****new 32b but rem'd
+;LDR R9,[R9,R7,LSL#2] ; convert back TO MODE 15 COLOUR ;****new 32b but rem'd
+STR R9,[R0,R5] ; write TO mode2tab         ;****** new 32b
+
+SUBS R5,R5,#4                    ;******* new 32b
+BGE update_mode2palette_loop     ;******* new 32b
+                                 ;******* new 32b
+MOV R0,#0                        ;******* new 32b
+LDMEA mem,{R4-R11,PC}            ;******* new 32b
+
+; RJW was here
+.updatepixel5
+FNADR(13,mode5tab)      ;*******32b change to FNADR
+
+;LDRB R2,[mem,#crt_regs+3]               ;*** rem'd 32b
+;TST R2,#1 << 4                          ;*** rem'd 32b
+;BEQ updatepixel5_2                      ;*** rem'd 32b
+                                         ;*** rem'd 32b
+; RJW was here                           ;*** rem'd 32b
+;AND R2,R14,#%11    ; make fortress work ;*** rem'd 32b
+;BIC R14,R14,#%111   ;                   ;*** rem'd 32b
+;ADD R14,R2,R14,LSR#1                    ;*** rem'd 32b
+                                         ;*** rem'd 32b
+;B updatepixel5_2                        ;*** rem'd 32b
+
+ADD R14,R14,R14,LSL#2 ; R14 * 5            ;******* new 32b
+
+ADD R14,R1,R14,LSL#3 ; offset in arc screen of byte/4 ;*** new 32b
+
+MOV R14,R14,LSL#2+2       ;******* new 32b
+LDR R1,[mem,#arc_screenstart] ;*** new 32b
+ADD R14,R14,R1            ;******* new 32b
+
+
+LDR R1,[R13,R0,LSL#4]     ;******* new 32b
+STR R1,[R14],#4           ;******* new 32b
+ADD R13,R13,#4            ;******* new 32b
+LDR R1,[R13,R0,LSL#4]     ;******* new 32b
+STR R1,[R14],#4           ;******* new 32b
+ADD R13,R13,#4            ;******* new 32b
+LDR R1,[R13,R0,LSL#4]     ;******* new 32b
+STR R1,[R14],#4           ;******* new 32b
+ADD R13,R13,#4            ;******* new 32b
+LDR R1,[R13,R0,LSL#4]     ;******* new 32b
+STR R1,[R14],#4           ;******* new 32b
+
+;LDR R0,[R13,R0,LSL#2] ; load 4 bytes from table  ;******* new 32b
+;LDR R13,[mem,#arc_screenstart]  ;******* new 32b
+;STR R0,[R13,R14,LSL#2]  ;******* new 32b
+
+
+LDR PC,[mem,#scratch]  ;******* new 32b
+
+
+
+.updatescreen5
+;ADR R8,mode5tab            ******* REM'd 32b
+;B updatescreen4_2          ******* REM'd 32b
+FNADR(8,mode5tab)          ;******* new 32b
+
+LDRB R0,[mem,#lastmode]    ;******* 32b section copied from updatescreen4_2
+CMP R0,#99                 ;******* was #9, 99 in 32b
+BEQ skip_mode9
+SWI &116
+SWI &100+9 ; MODE 9
+FNchangemode               ;******* new 32b
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode] ;******* was #9, 99 in 32b
+.skip_mode9
+
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+FNshadow
+
+;ADR R8,mode4tab
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6] ; no of vertical chars
+MUL R4,R2,R11
+MOV R4,R4,LSL#3
+
+ADD R7,R7,R13
+ADD R11,R13,#&8000
+ADD R12,R12,R13
+
+; RJW was here
+LDRB R0,[R6,#3] ; Fortress
+TST R0,#1 << 4
+BNE fortress_updatescreen4
+;MOV R4,R2,LSL#8
+.loop2
+;MOV R2,#80
+.loop1
+
+;RJW was here
+LDMIA R7!,{R10,R14}
+
+AND R0,R10,#&FF : MOV R0,R0,LSL#4           ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R9,R9,#160*4-4*4                        ;*** new 32b
+SUB R8,R8,#12                               ;*** new 32b
+                                            ;*** new 32b
+AND R0,R10,#&FF00 : MOV R0,R0,LSR#4         ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R9,R9,#160*4-4*4                        ;*** new 32b
+SUB R8,R8,#12                               ;*** new 32b
+                                            ;*** new 32b
+AND R0,R10,#&FF0000 : MOV R0,R0,LSR#4+8     ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R9,R9,#160*4-4*4                        ;*** new 32b
+SUB R8,R8,#12                               ;*** new 32b
+                                            ;*** new 32b
+AND R0,R10,#&FF000000 : MOV R0,R0,LSR#4+16  ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R9,R9,#160*4-4*4                        ;*** new 32b
+SUB R8,R8,#12                               ;*** new 32b
+                                            ;*** new 32b
+AND R0,R14,#&FF : MOV R0,R0,LSL#4           ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R9,R9,#160*4-4*4                        ;*** new 32b
+SUB R8,R8,#12                               ;*** new 32b
+                                            ;*** new 32b
+AND R0,R14,#&FF00 : MOV R0,R0,LSR#4         ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R9,R9,#160*4-4*4                        ;*** new 32b
+SUB R8,R8,#12                               ;*** new 32b
+                                            ;*** new 32b
+AND R0,R14,#&FF0000 : MOV R0,R0,LSR#4+8     ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R9,R9,#160*4-4*4                        ;*** new 32b
+SUB R8,R8,#12                               ;*** new 32b
+                                            ;*** new 32b
+AND R0,R14,#&FF000000 : MOV R0,R0,LSR#4+16  ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R8,R8,#4                                ;*** new 32b
+LDR R5,[R0,R8]                              ;*** new 32b
+STR R5,[R9],#4                              ;*** new 32b
+ADD R9,R9,#160*4-4*4                        ;*** new 32b
+SUB R8,R8,#12                               ;*** new 32b
+                                            ;*** new 32b
+SUB R9,R9,#160*4*4*2                        ;*** new 32b
+ADD R9,R9,#4*4 ;*2                          ;*** new 32b
+
+
+;AND R0,R14,#&FF                              ;**** rem'd 32b
+;LDR R5,[R8,R0,LSL#2]                         ;**** rem'd 32b
+;STR R5,[R9,#160*4] ; 160=line length in mode ;**** rem'd 32b
+;AND R0,R14,#&FF00                            ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#6]                         ;**** rem'd 32b
+;STR R5,[R9,#160*5] ; 160=line length in mode ;**** rem'd 32b
+;AND R0,R14,#&FF0000                          ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#14]                        ;**** rem'd 32b
+;STR R5,[R9,#160*6] ; 160=line length in mode ;**** rem'd 32b
+;AND R0,R14,#&FF000000                        ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#22]                        ;**** rem'd 32b
+;STR R5,[R9,#160*7] ; 160=line length in mode ;**** rem'd 32b
+                                              ;**** rem'd 32b
+;AND R0,R10,#&FF00                            ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#6]                         ;**** rem'd 32b
+;STR R5,[R9,#160*4] ; was STR R5,[R9,#160] 160=line length in mode;**rem'd 32b
+;AND R0,R10,#&FF0000                         ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#14]                         ;**** rem'd 32b
+;STR R5,[R9,#160*2*4] ; was STR R5,[R9,#160*2] 160=line length in mode;**rem 32b
+;AND R0,R10,#&FF000000                         ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#22]                         ;**** rem'd 32b
+;STR R5,[R9,#160*3*4] ; was STR R5,[R9,#160*3] 160=line length in mode;**rem 32b
+;AND R0,R10,#&FF                         ;**** rem'd 32b
+;LDR R5,[R8,R0,LSL#2]                         ;**** rem'd 32b
+;STR R5,[R9],#4 ; 160=line length in mode  ;**** rem'd 32b
+
+CMP R7,R11 : MOVEQ R7,R12
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+
+LDRB R2,[R6,#3] : MOV R2,R2,LSR#4 ; vertical timing
+MOV R5,#320 : MOV R5,R5,LSL R2    ;
+;ADD R9,R9,#160*8
+;ADD R9,R9,R5                      ; to make fortress work ****rem'd 32b
+ADD R9,R9,R5,LSL#2                      ; to make fortress work  ****new 32b
+
+LDRB R2,[R6,#1] ; no of horiz chars
+;SUB R9,R9,R2,LSL#2     ;*******rem'd 32b
+SUB R9,R9,R2,LSL#(2+2)  ;*******new 32b
+SUBS R4,R4,R2,LSL#3 ; #640
+BGT loop2
+
+LDMEA mem,{R4-R11,PC} ;******removed ^ 32b
+;RJW was here
+.fortress_updatescreen4
+;MOV R4,R2,LSL#8
+.loop2
+;MOV R2,#80
+.loop1
+
+LDR R10,[R7],#8
+AND R0,R10,#&FF00
+LDR R5,[R8,R0,LSR#6]
+STR R5,[R9,#160] ; 160=line length in mode
+AND R0,R10,#&FF0000
+LDR R5,[R8,R0,LSR#14]
+STR R5,[R9,#160*2] ; 160=line length in mode
+AND R0,R10,#&FF000000
+LDR R5,[R8,R0,LSR#22]
+STR R5,[R9,#160*3] ; 160=line length in mode
+AND R0,R10,#&FF
+LDR R5,[R8,R0,LSL#2]
+STR R5,[R9],#4 ; 160=line length in mode
+
+CMP R7,R11 : MOVEQ R7,R12
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+
+LDRB R2,[R6,#3] : MOV R2,R2,LSR#4 ; vertical timing
+MOV R5,#320 : MOV R5,R5,LSL R2    ;
+;ADD R9,R9,#160*8
+ADD R9,R9,R5                      ; to make fortress work
+
+LDRB R2,[R6,#1] ; no of horiz chars
+SUB R9,R9,R2,LSL#2
+SUBS R4,R4,R2,LSL#3 ; #640
+BGT loop2
+
+LDMEA mem,{R4-R11,PC} ;******removed ^ 32b
+
+
+.mode5tab
+]
+P%+=1024*4 :REM 32bit change ***** =4*the size used previously
+O%+=1024*4 :REM 32bit change ***** =4*the size used previously
+[OPTp
+.mode5tab_orig ;****** new 32bit
+]
+P%+=1024*4 :REM ****** new 32bit
+O%+=1024*4 :REM ****** new 32bit
+[OPTp
+
+
+.updatescreen4
+FNADR(8,mode4tab) ;********32b was ADR previously
+;.updatescreen4_2 ;********32b removed
+
+LDRB R0,[mem,#lastmode]
+CMP R0,#99        ;******* was #9, 99 in 32b
+BEQ skip_mode4    ;******* new label in 32b (to separate from mode5)
+SWI &116
+SWI &100+9 ; MODE 9
+FNchangemode               ;******* new 32b
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#99 : STRB R0,[mem,#lastmode]  ;******* was #9, 99 in 32b
+.skip_mode4    ;******* new label in 32b (to separate from mode5)
+
+;LDR R6,crt_regs_addr
+SUB R6,mem,#-crt_regs
+LDRB R7,[R6,#13]
+LDRB R2,[R6,#12]
+AND R2,R2,#screen_mask%
+ADD R7,R7,R2,LSL#8
+MOV R7,R7,LSL#screen_shift%
+
+FNshadow
+
+;ADR R8,mode4tab
+LDRB R2,[R6,#1] ; no of horiz chars
+LDRB R11,[R6,#6] ; no of vertical chars
+MUL R4,R2,R11
+MOV R4,R4,LSL#3
+
+ADD R7,R7,R13
+ADD R11,R13,#&8000
+ADD R12,R12,R13
+
+; RJW was here
+LDRB R0,[R6,#3] ; Fortress
+TST R0,#1 << 4
+BNE fortress_updatescreen4
+;MOV R4,R2,LSL#8
+.loop2
+;MOV R2,#80
+.loop1
+
+;RJW was here
+LDMIA R7!,{R10,R14}
+
+AND R0,R10,#%11 << 6                     ;****** new 32b
+LDR R5,[R8,R0,LSR#4]                     ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 4                     ;****** new 32b
+LDR R5,[R8,R0,LSR#2]                     ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 2                     ;****** new 32b
+LDR R5,[R8,R0];,LSR#0]                   ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 0                     ;****** new 32b
+LDR R5,[R8,R0,LSL#2]                     ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+ADD R9,R9,#160*4-4*4                     ;****** new 32b
+                                         ;****** new 32b
+AND R0,R10,#%11 << 6+8                   ;****** new 32b
+LDR R5,[R8,R0,LSR#4+8]                   ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 4+8                   ;****** new 32b
+LDR R5,[R8,R0,LSR#2+8]                   ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 2+8                   ;****** new 32b
+LDR R5,[R8,R0,LSR#0+8]                   ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 0+8                   ;****** new 32b
+LDR R5,[R8,R0,LSR#-2+8]                  ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+ADD R9,R9,#160*4-4*4                     ;****** new 32b
+                                         ;****** new 32b
+AND R0,R10,#%11 << 6+8+8                 ;****** new 32b
+LDR R5,[R8,R0,LSR#4+8+8]                 ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 4+8+8                 ;****** new 32b
+LDR R5,[R8,R0,LSR#2+8+8]                 ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 2+8+8                 ;****** new 32b
+LDR R5,[R8,R0,LSR#0+8+8]                 ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 0+8+8                 ;****** new 32b
+LDR R5,[R8,R0,LSR#-2+8+8]                ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+ADD R9,R9,#160*4-4*4                     ;****** new 32b
+                                         ;****** new 32b
+AND R0,R10,#%11 << 6+8+8+8               ;****** new 32b
+LDR R5,[R8,R0,LSR#4+8+8+8]               ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 4+8+8+8               ;****** new 32b
+LDR R5,[R8,R0,LSR#2+8+8+8]               ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 2+8+8+8               ;****** new 32b
+LDR R5,[R8,R0,LSR#0+8+8+8]               ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R10,#%11 << 0+8+8+8               ;****** new 32b
+LDR R5,[R8,R0,LSR#-2+8+8+8]              ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+ADD R9,R9,#160*4-4*4                     ;****** new 32b
+                                         ;****** new 32b
+AND R0,R14,#%11 << 6                     ;****** new 32b
+LDR R5,[R8,R0,LSR#4]                     ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 4                     ;****** new 32b
+LDR R5,[R8,R0,LSR#2]                     ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 2                     ;****** new 32b
+LDR R5,[R8,R0];,LSR#0]                   ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 0                     ;****** new 32b
+LDR R5,[R8,R0,LSL#2]                     ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+ADD R9,R9,#160*4-4*4                     ;****** new 32b
+                                         ;****** new 32b
+AND R0,R14,#%11 << 6+8                   ;****** new 32b
+LDR R5,[R8,R0,LSR#4+8]                   ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 4+8                   ;****** new 32b
+LDR R5,[R8,R0,LSR#2+8]                   ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 2+8                   ;****** new 32b
+LDR R5,[R8,R0,LSR#0+8]                   ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 0+8                   ;****** new 32b
+LDR R5,[R8,R0,LSR#-2+8]                  ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+ADD R9,R9,#160*4-4*4                     ;****** new 32b
+                                         ;****** new 32b
+AND R0,R14,#%11 << 6+8+8                 ;****** new 32b
+LDR R5,[R8,R0,LSR#4+8+8]                 ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 4+8+8                 ;****** new 32b
+LDR R5,[R8,R0,LSR#2+8+8]                 ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 2+8+8                 ;****** new 32b
+LDR R5,[R8,R0,LSR#0+8+8]                 ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 0+8+8                 ;****** new 32b
+LDR R5,[R8,R0,LSR#-2+8+8]                ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+ADD R9,R9,#160*4-4*4                     ;****** new 32b
+                                         ;****** new 32b
+AND R0,R14,#%11 << 6+8+8+8               ;****** new 32b
+LDR R5,[R8,R0,LSR#4+8+8+8]               ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 4+8+8+8               ;****** new 32b
+LDR R5,[R8,R0,LSR#2+8+8+8]               ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 2+8+8+8               ;****** new 32b
+LDR R5,[R8,R0,LSR#0+8+8+8]               ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+AND R0,R14,#%11 << 0+8+8+8               ;****** new 32b
+LDR R5,[R8,R0,LSR#-2+8+8+8]              ;****** new 32b
+STR R5,[R9],#4 ; 160=line length in mode ;****** new 32b
+ADD R9,R9,#160*4-4*4                     ;****** new 32b
+                                         ;****** new 32b
+                                         ;****** new 32b
+                                         ;****** new 32b
+SUB R9,R9,#160*4*4*2                     ;****** new 32b
+ADD R9,R9,#4*4 ;*2                       ;****** new 32b
+
+
+;AND R0,R14,#&FF                              ;****rem'd 32b
+;LDR R5,[R8,R0,LSL#2]                         ;****rem'd 32b
+;STR R5,[R9,#160*4] ; 160=line length in mode ;****rem'd 32b
+;AND R0,R14,#&FF00                            ;****rem'd 32b
+;LDR R5,[R8,R0,LSR#6]                         ;****rem'd 32b
+;STR R5,[R9,#160*5] ; 160=line length in mode ;****rem'd 32b
+;AND R0,R14,#&FF0000                          ;****rem'd 32b
+;LDR R5,[R8,R0,LSR#14]                        ;****rem'd 32b
+;STR R5,[R9,#160*6] ; 160=line length in mode ;****rem'd 32b
+;AND R0,R14,#&FF000000                        ;****rem'd 32b
+;LDR R5,[R8,R0,LSR#22]                        ;****rem'd 32b
+;STR R5,[R9,#160*7] ; 160=line length in mode ;****rem'd 32b
+                                              ;****rem'd 32b
+                                              ;****rem'd 32b
+;AND R0,R10,#&FF00                            ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#6]                         ;**** rem'd 32b
+;STR R5,[R9,#160*4] ; was STR R5,[R9,#160] 160=line length in mode;**rem'd 32b
+;AND R0,R10,#&FF0000                         ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#14]                         ;**** rem'd 32b
+;STR R5,[R9,#160*2*4] ; was STR R5,[R9,#160*2] 160=line length in mode;**rem 32b
+;AND R0,R10,#&FF000000                         ;**** rem'd 32b
+;LDR R5,[R8,R0,LSR#22]                         ;**** rem'd 32b
+;STR R5,[R9,#160*3*4] ; was STR R5,[R9,#160*3] 160=line length in mode;**rem 32b
+;AND R0,R10,#&FF                         ;**** rem'd 32b
+;LDR R5,[R8,R0,LSL#2]                         ;**** rem'd 32b
+;STR R5,[R9],#4 ; 160=line length in mode  ;**** rem'd 32b
+
+CMP R7,R11 : MOVEQ R7,R12
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+
+LDRB R2,[R6,#3] : MOV R2,R2,LSR#4 ; vertical timing
+MOV R5,#320 : MOV R5,R5,LSL R2    ;
+;ADD R9,R9,#160*8
+;ADD R9,R9,R5                      ; to make fortress work ****rem'd 32b
+ADD R9,R9,R5,LSL#2                      ; to make fortress work  ****new 32b
+
+LDRB R2,[R6,#1] ; no of horiz chars
+;SUB R9,R9,R2,LSL#2     ;*******rem'd 32b
+SUB R9,R9,R2,LSL#(2+2)  ;*******new 32b
+SUBS R4,R4,R2,LSL#3 ; #640
+BGT loop2
+
+LDMEA mem,{R4-R11,PC} ;******removed ^ 32b
+;RJW was here
+.fortress_updatescreen4
+;MOV R4,R2,LSL#8
+.loop2
+;MOV R2,#80
+.loop1
+
+LDR R10,[R7],#8
+AND R0,R10,#&FF00
+LDR R5,[R8,R0,LSR#6]
+STR R5,[R9,#160] ; 160=line length in mode
+AND R0,R10,#&FF0000
+LDR R5,[R8,R0,LSR#14]
+STR R5,[R9,#160*2] ; 160=line length in mode
+AND R0,R10,#&FF000000
+LDR R5,[R8,R0,LSR#22]
+STR R5,[R9,#160*3] ; 160=line length in mode
+AND R0,R10,#&FF
+LDR R5,[R8,R0,LSL#2]
+STR R5,[R9],#4 ; 160=line length in mode
+
+CMP R7,R11 : MOVEQ R7,R12
+
+SUBS R2,R2,#1 ; end of character row
+BGT loop1
+
+LDRB R2,[R6,#3] : MOV R2,R2,LSR#4 ; vertical timing
+MOV R5,#320 : MOV R5,R5,LSL R2    ;
+;ADD R9,R9,#160*8
+ADD R9,R9,R5                      ; to make fortress work
+
+LDRB R2,[R6,#1] ; no of horiz chars
+SUB R9,R9,R2,LSL#2
+SUBS R4,R4,R2,LSL#3 ; #640
+BGT loop2
+
+LDMEA mem,{R4-R11,PC} ;******removed ^ 32b
+
+; RJW was here
+.updatepixel4
+
+ADR R13,mode4tab
+
+.updatepixel5_2
+
+
+ADD R14,R14,R14,LSL#2 ; R14 * 5
+
+ADD R14,R1,R14,LSL#3 ; offset in arc screen of byte/4
+
+LDR R0,[R13,R0,LSL#2] ; load 4 bytes from table
+
+MOV R14,R14,LSL#2+2                       ;***** 32b new
+LDR R1,[mem,#arc_screenstart]             ;***** 32b new
+ADD R14,R14,R1                            ;***** 32b new
+                                          ;***** 32b new
+MOV R1,R0                                 ;***** 32b new
+                                          ;***** 32b new
+AND R0,R1,#%11 << 6                       ;***** 32b new
+LDR R0,[R13,R0,LSR#4]                     ;***** 32b new
+STR R0,[R14],#4 ; 160=line length in mode ;***** 32b new
+AND R0,R1,#%11 << 4                       ;***** 32b new
+LDR R0,[R13,R0,LSR#2]                     ;***** 32b new
+STR R0,[R14],#4 ; 160=line length in mode ;***** 32b new
+AND R0,R1,#%11 << 2                       ;***** 32b new
+LDR R0,[R13,R0];,LSR#0]                   ;***** 32b new
+STR R0,[R14],#4 ; 160=line length in mode ;***** 32b new
+AND R0,R1,#%11 << 0                       ;***** 32b new
+LDR R0,[R13,R0,LSL#2]                     ;***** 32b new
+STR R0,[R14],#4 ; 160=line length in mode ;***** 32b new
+
+;LDR R13,[mem,#arc_screenstart] ******** 32bit removed
+;STR R0,[R13,R14,LSL#2]         ******** 32bit removed
+LDR PC,[mem,#scratch]
+
+;.mode4tab                      ******** 32bit removed
+;]                              ******** 32bit removed
+;P%+=1024                       ******** 32bit removed
+;O%+=1024                       ******** 32bit removed
+;[OPTp                          ******** 32bit removed
+
+
+.mode4tab          ;****** 32b new
+EQUD &00000000     ;****** 32b new
+EQUD &01010000     ;****** 32b new
+EQUD &00000101     ;****** 32b new
+EQUD &01010101     ;****** 32b new
+.mode4tab_orig     ;****** 32b new
+EQUD &00000000     ;****** 32b new
+EQUD &FFFF0000     ;****** 32b new
+EQUD &0000FFFF     ;****** 32b new
+EQUD &FFFFFFFF     ;****** 32b new
+
+.pointer_on
+\LDRB R0,[mem,#cursor_on]
+\CMP R0,#0 : \MOVNE PC,R14
+TST F,#1 << 10 ; cursor on?
+MOVEQ PC,R14
+MOV R0,#106:MOV R1,#&82
+SWI "OS_Byte"
+;MOV R0,#1
+;STRB R0,[mem,#cursor_tamper]
+MOV PC,R14
+
+
+.updatescreen7
+LDRB R0,[mem,#lastmode]
+CMP R0,#7
+BEQ not_newmode7
+ADR R0,mode7copy
+MOV R1,#1020
+MOV R2,#0
+.cls7
+STR R2,[R0,R1]
+SUBS R1,R1,#4
+BPL cls7
+
+SWI &116
+SWI &107 ; MODE 7
+FNpointer_on
+SWI "OS_RemoveCursors"
+MOV R0,#7 : STRB R0,[mem,#lastmode]
+.not_newmode7
+SWI &11E ; PRINTTAB(0,0)
+
+;LDR R5,crt_regs_addr
+MOV R5,R6
+LDRB R6,[R5,#12]
+AND R6,R6,#&3F
+EOR R6,R6,#&20
+ADD R6,R6,#&74
+AND R6,R6,#&FF
+LDRB R7,[R5,#13]
+ADD R7,R7,R6,LSL#8
+
+FNshadow
+
+;MOV R7,#&7C00
+
+;ADD mem,mem,#&7C00
+MOV R4,#0
+;SUB R4,R4,#1
+;ADD mem,mem,#1
+
+ADR R8,mode7copy:;SUB R8,R8,#&7C00
+
+MOV R9,#0 ; X
+MOV R10,#0 ; Y
+SUB R9,R9,#1
+
+.mode7loop
+ADD R9,R9,#1 : CMP R9,#40 : MOVEQ R9,#0 : ADDEQ R10,R10,#1
+LDRB R0,[R13,R7]
+CMP R0,#&7F : MOVEQ R0,#255
+CMP R0,#&1A : MOVEQ R0,#&9A ; fix Zalaga???
+CMP R0,#&1D : MOVEQ R0,#&9D ; fix Zalaga???
+CMP R0,#32 : MOVLT R0,#32
+
+CMP R0,#&60 : MOVEQ R0,#&5F : BEQ print7
+CMP R0,#&5F : MOVEQ R0,#&23 : BEQ print7
+CMP R0,#&23 : MOVEQ R0,#&60
+.print7
+
+LDRB R11,[R8] ; mode7copy
+CMP R11,R0
+BEQ noprint7
+SWI &100+31 ; PRINTTAB(
+MOV R11,R0
+MOV R0,R9 : SWI "OS_WriteC"
+MOV R0,R10 : SWI "OS_WriteC"
+MOV R0,R11 : SWI "OS_WriteC"
+STRB R0,[R8] ; mode7copy
+.noprint7
+ADD R8,R8,#1
+
+ADD R7,R7,#1
+CMP R7,#&8000
+MOVEQ R7,#&7C00
+ADD R4,R4,#1
+CMP R4,#25*40
+BNE mode7loop
+
+LDMEA mem,{R4-R11,PC} ;******removed ^ 32b
+.mode7copy
+]
+P%+=1024:O%+=1024
+[OPTp
+
+.update_screen
+.updatescreen
+STMFD mem,{R4-R11,R14}
+
+]
+IF electron% THEN
+[OPTp
+TST F,#1 << 12
+MOVNE PC,R14 ; "mode 7"
+]
+ENDIF
+
+[OPTp
+LDR R9,[mem,#arc_screenstart]
+
+SUB R6,mem,#-crt_regs
+;LDRB R10,[R6,#19]
+;ANDS R10,R10,#%11
+;MOVNE R12,#&5800
+;MOVEQ R12,#&4000
+;CMP R10,#%10
+;MOVEQ R12,#&3000
+;CMP R10,#%01
+;MOVEQ R12,#&6000
+MOV R12,F,LSR#16
+
+]
+IF electron% THEN
+[OPTp
+LDRB R0,[mem,#fe20]
+]
+ELSE
+[OPTp
+SUB R0,mem,#512 ; sheila
+LDRB R0,[R0,#&20]
+]
+ENDIF
+
+[OPTp
+;RJW Updated code to avoid jump->jumps
+MOVS R0,R0,LSR#2
+BCS updatescreen7
+
+TST F,#1 << 8 ; patch on?
+BNE patch_screen2 ; patch_screen2 ; F=R7
+
+;RJW; Can this AND be removed?
+.patch_exit
+AND R0,R0,#7
+LDR R0,[PC,R0,LSL#2]
+ADD PC,PC,R0
+EQUD updatescreen4-ustab   ; %000 00
+.ustab
+EQUD updatescreen5-ustab   ; %001 00
+EQUD updatescreen4-ustab   ; %010 00
+EQUD updatescreen0-ustab   ; %011 00
+EQUD updatescreen1-ustab   ; %100 00
+EQUD updatescreen2-ustab   ; %101 00
+EQUD updatescreen1-ustab   ; %110 00
+EQUD updatescreen0-ustab   ; %111 00
+.update_palette         ;************** new 32bit
+STMFD mem,{R4-R11,R14}  ;************** new 32bit
+
+
+LDRB R0,[mem,#fe20]                     ;**** new 32b
+MOVS R0,R0,LSR#2                        ;**** new 32b
+AND R0,R0,#7                            ;**** new 32b
+LDR R0,[PC,R0,LSL#2]                    ;**** new 32b
+;LDMEA mem,{R0,R4-R11,PC}       ;**** new but rem'd 32b
+ADD PC,PC,R0                            ;**** new 32b
+EQUD update_palette2-ustab4   ; %000 00 ;**** new 32b
+.ustab4                                 ;**** new 32b
+EQUD update_palette2-ustab4   ; %001 00 ;**** new 32b
+EQUD update_palette2-ustab4   ; %010 00 ;**** new 32b
+EQUD update_palette2-ustab4   ; %011 00 ;**** new 32b
+EQUD update_palette2-ustab4   ; %100 00 ;**** new 32b
+EQUD update_palette2-ustab4   ; %101 00 ;**** new 32b
+EQUD update_palette2-ustab4   ; %110 00 ;**** new 32b
+EQUD update_palette2-ustab4   ; %111 00 ;**** new 32b
+;EQUD update_palette4-ustab4   ; %000 00 **** new but rem'd 32b
+;.ustab4                                 **** new but rem'd 32b
+;EQUD update_palette5-ustab4   ; %001 00 **** new but rem'd 32b
+;EQUD update_palette4-ustab4   ; %010 00 **** new but rem'd 32b
+;EQUD update_palette0-ustab4   ; %011 00 **** new but rem'd 32b
+;EQUD update_palette1-ustab4   ; %100 00 **** new but rem'd 32b
+;EQUD update_palette2-ustab4   ; %101 00 **** new but rem'd 32b
+;EQUD update_palette1-ustab4   ; %110 00 **** new but rem'd 32b
+;EQUD update_palette0-ustab4   ; %111 00 **** new but rem'd 32b
+
+  EQUD 0 ; MUST BE JUST BEFORE mode_selector_block ;*** new 32b
+  EQUD 0                                           ;*** new 32b
+  .mode_selector_block                             ;*** new 32b
+  EQUD 1                                           ;*** new 32b
+  EQUD 640 ;xres                                   ;*** new 32b
+  EQUD 256 ;yres                                   ;*** new 32b
+  EQUD 3        ; 8 bpp                            ;*** new 32b
+  EQUD -1                                          ;*** new 32b
+  EQUD 0        ; Modeflags = 128                  ;*** new 32b
+  EQUD 128                                         ;*** new 32b
+  EQUD 3        ; NColour = 255                    ;*** new 32b
+  EQUD 255                                         ;*** new 32b
+  EQUD -1                                          ;*** new 32b
+
+.patch_screen2
+ADR R13,patch_exit
+B patch_screen
+]
+=""
+
+DEFFNchangemode :REM *********** new for 32b *********
+[OPTp
+;SWI &116                       ;***** new for 32b ***
+;SWI &100+15 ; MODE 15          ;***** new for 32b ***
+;]                              ;***** new for 32b ***
+;=""                            ;***** new for 32b ***
+MOV R0, #0                      ;***** new for 32b ***
+FNADR(1, mode_selector_block)   ;***** new for 32b ***
+SWI "OS_ScreenMode"             ;***** new for 32b ***
+]
+=""
+
+; cols 0-7             ;***** new for 32b ***
+SWI &100+19:SWI &100+0:SWI &100+16:SWI &100+0  :SWI &100+0  :SWI &100+0  ;black
+SWI &100+19:SWI &100+1:SWI &100+16:SWI &100+255:SWI &100+0  :SWI &100+0  ;red
+SWI &100+19:SWI &100+2:SWI &100+16:SWI &100+0  :SWI &100+255:SWI &100+0  ;green
+SWI &100+19:SWI &100+3:SWI &100+16:SWI &100+255:SWI &100+255:SWI &100+0  ;yellow
+SWI &100+19:SWI &100+4:SWI &100+16:SWI &100+0  :SWI &100+0  :SWI &100+255;blue
+SWI &100+19:SWI &100+5:SWI &100+16:SWI &100+255:SWI &100+0  :SWI &100+255;magnta
+SWI &100+19:SWI &100+6:SWI &100+16:SWI &100+0  :SWI &100+255:SWI &100+255;cyan
+SWI &100+19:SWI &100+7:SWI &100+16:SWI &100+255:SWI &100+255:SWI &100+255;white
+
+;flashing cols 8-15             ;***** new for 32b ***
+SWI &100+19:SWI &100+8 :SWI &100+18:SWI &100+0  :SWI &100+0  :SWI &100+0  ;black
+SWI &100+19:SWI &100+8 :SWI &100+17:SWI &100+255:SWI &100+255:SWI &100+255;white
+SWI &100+19:SWI &100+9 :SWI &100+18:SWI &100+255:SWI &100+0  :SWI &100+0  ;red
+SWI &100+19:SWI &100+9 :SWI &100+17:SWI &100+0  :SWI &100+255:SWI &100+255;cyan
+SWI &100+19:SWI &100+10:SWI &100+18:SWI &100+0  :SWI &100+255:SWI &100+0  ;green
+SWI &100+19:SWI &100+10:SWI &100+17:SWI &100+255:SWI &100+0  :SWI &100+255;mgnta
+SWI &100+19:SWI &100+11:SWI &100+18:SWI &100+255:SWI &100+255:SWI &100+0  ;yelow
+SWI &100+19:SWI &100+11:SWI &100+17:SWI &100+0  :SWI &100+0  :SWI &100+255;blue
+SWI &100+19:SWI &100+12:SWI &100+18:SWI &100+0  :SWI &100+0  :SWI &100+255;blue
+SWI &100+19:SWI &100+12:SWI &100+17:SWI &100+255:SWI &100+255:SWI &100+0  ;yelow
+SWI &100+19:SWI &100+13:SWI &100+18:SWI &100+255:SWI &100+0  :SWI &100+255;mgnta
+SWI &100+19:SWI &100+13:SWI &100+17:SWI &100+0  :SWI &100+255:SWI &100+0  ;green
+SWI &100+19:SWI &100+14:SWI &100+18:SWI &100+0  :SWI &100+255:SWI &100+255;cyan
+SWI &100+19:SWI &100+14:SWI &100+17:SWI &100+255:SWI &100+0  :SWI &100+0  ;red
+SWI &100+19:SWI &100+15:SWI &100+18:SWI &100+255:SWI &100+255:SWI &100+255;white
+SWI &100+19:SWI &100+15:SWI &100+17:SWI &100+0  :SWI &100+0  :SWI &100+0  ;black
+]
+=""
+
+DEF FNADR(s%,x%) :REM ************ new for 32b *****8
+REM The instruction sequence must be of FIXED length
+a%=x%-P%-8
+IF a%>=0 THEN
+ [OPTp:ADD s%,PC,#(a% AND &000003FF):ADD s%,s%,#(a% AND &FFFFFC00):]
+ELSE
+ a%=-a%
+ [OPTp:SUB s%,PC,#(a% AND &000003FF):SUB s%,s%,#(a% AND &FFFFFC00):]
+ENDIF
+=""
+
+
+DEFFNpointer_on
+IF NOTelectron% THEN [OPTp:BL pointer_on:]
+=""

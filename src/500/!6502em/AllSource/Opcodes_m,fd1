@@ -1,0 +1,2057 @@
+REM > Opcodes
+
+DEFFNopcodes
+
+FOR bcd_loop%=0 TO 1
+opcode%=0
+IF bcd_loop%=0 THEN [OPTp:.opcode(&0):] ELSE [OPTp:.bcd(0):]
+
+[OPTp
+
+;.opcode(&0) ; BRK
+ADD zpc,zpc,#2 << 16
+MOV R0,zpc,LSR#24
+FNpush(0)
+MOV R0,zpc,LSR#16
+FNpush(0)
+ORR F,F,#%10000 ; set BRK flag
+FNpush(F)
+ORR F,F,#%00100 ; set I flag
+BIC F,F,#%10000 ; clear BRK flag..... seems to work!
+MOV R0,#&10000 : SUB R0,R0,#2
+LDRB zpc,[mem,R0]
+ADD R0,R0,#1
+LDRB R0,[mem,R0]
+ADD zpc,zpc,R0,LSL#8
+MOV zpc,zpc,LSL#16
+FNfetch(0,7)
+;
+.opcode(&1) ; ORA (n,X)
+FNgetpre(0,1)
+FNora(0,2,6)
+;
+.opcode(&2) ; ?
+;FNprint(zpc)
+;MOV R0,#66
+;B raw_exit
+FNundoc(&2)
+FNfetch(1,2)
+;
+.opcode(&3) ; ?
+ADD R0,zpc,#1 << 16
+]
+IF master THEN
+[OPTp
+MOV R2,#pagetable
+LDRB R2,[R2,R0,LSR#28]
+MOV R2,R2,LSL#12
+LDRB R0,[R2,R0,LSR#16]
+]
+ELSE
+[OPTp
+LDRB R0,[mem,R0,LSR#16]
+]
+ENDIF
+[OPTp
+CMP R0,#3
+BEQ osbput
+CMP R0,#4
+BEQ osbget
+;CMP R0,#&F0
+;BEQ oswritec
+;CMP R0,#&F1
+;BEQ osnewline
+MOV R0,#3
+B raw_exit
+FNfetch(1,2)
+;
+.opcode(&4) ; TSB n
+FNgetzero(0,1)
+FNtsb(0)
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,5)
+;
+.opcode(&5) ; ORA n
+FNgetzero(0,1)
+FNora(0,2,3)
+;
+.opcode(&6) ; ASL n
+FNgetzero(0,1)
+FNasl(0)
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,5)
+;
+.opcode(&7) ; (SLO n - ASL n, ORA n)
+CMP zpc,#&8000 << 16
+;BHS opcode7
+MOVHS R0,#7
+BHS raw_exit
+FNgetzero(0,1)
+FNasl(0)
+ORRS A,A,R0,LSL#24 ; ORA zp
+STRB R0,[mem,R1]
+FNfetch(2,0)
+;
+.opcode(&8) ; PHP
+FNpush(F)
+FNfetch(1,3)
+;
+.opcode(&9) ; ORA #N
+FNgetbyte1(0)
+FNora(0,2,2)
+;
+.opcode(&A) ; ASL A
+MOVS A,A,LSL#1
+FNsetupNZC
+FNfetch(1,2)
+;
+.opcode(&B) ; ANC (undocumented - Repton 2)
+            ; AND #N, ASL A
+FNgetbyte1(0)
+AND R0,A,R0,LSL#24
+MOVS A,A,LSL#1
+FNsetupNZC
+FNfetch(2,2)
+;
+.opcode(&C) ; TSB nn
+FNgetabs(0,1)
+FNtsb(0)
+FNstrb(0,1)
+FNfetch(3,6)
+;
+.opcode(&D) ; ORA nn
+FNgetabs(0,1)
+FNora(0,3,4)
+;
+.opcode(&E) ; ASL nn
+FNgetabs(0,1)
+FNasl(0)
+FNstrb(0,1)
+FNfetch(3,6)
+;
+.opcode(&F) ; ?
+FNundoc(&F)
+FNfetch(1,2)
+;
+.opcode(&10) ; BPL r
+TST F,#%10000000
+BNE branch_fetch
+FNbranch
+;
+.opcode(&11) ; ORA (n),Y
+FNgetpost2(0,1)
+FNora(0,2,5)
+;
+.opcode(&12) ; ORA (n)
+FNgetzeroindir(0,1)
+FNora(0,2,5)
+;
+.opcode(&13) ; OSBYTE
+FNundoc(&13)
+FNfetch(1,2)
+;
+.opcode(&14) ; TRB n
+FNgetzero(0,1)
+FNtrb(0)
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,5)
+;
+.opcode(&15) ; ORA n,X
+FNgetzeroindex(0,1)
+FNora(0,2,4)
+;
+.opcode(&16) ; ASL n,X
+FNgetzeroindex(0,1)
+FNasl(0)
+STRB R0,[mem,R1,LSR#24] ; zero page STRB
+FNfetch(2,6)
+;
+.opcode(&17) ; ?
+FNundoc(&17)
+FNfetch(1,2)
+;
+.opcode(&18) ; CLC
+BIC F,F,#%1
+FNfetch(1,2)
+;
+.opcode(&19) ; ORA nn,Y
+FNgetabsindex2(0,1,Y)
+FNora(0,3,4)
+;
+.opcode(&1A) ; INA
+]
+IF master THEN [OPTp:FNinc(A):]:REM Jack Attack
+[OPTp
+FNfetch(1,2)
+;
+.opcode(&1B) ; ?
+FNundoc(&1B)
+FNfetch(1,2)
+;
+.opcode(&1C) ; TRB nn
+FNgetabs(0,1)
+FNtrb(0)
+FNstrb(0,1)
+FNfetch(3,6)
+;
+.opcode(&1D) ; ORA nn,X
+FNgetabsindex2(0,1,X)
+FNora(0,3,4)
+;
+.opcode(&1E) ; ASL nn,X
+FNgetabsindex(0,1,X)
+FNasl(0)
+FNstrb16(0,1)
+FNfetch(3,7)
+;
+.opcode(&1F) ; ?
+FNundoc(&1F)
+FNfetch(1,2)
+;
+.opcode(&20) ; JSR nn
+FNgetabs(0,1)
+ADD zpc,zpc,#2 << 16
+MOV R0,zpc,LSR#24
+FNpush(0)
+MOV R0,zpc,LSR#16
+FNpush(0)
+MOV zpc,R1,LSL#16
+FNfetch(0,6)
+;
+.opcode(&21) ; AND (n,X)
+FNgetpre(0,1)
+FNand(0,2,6)
+;
+.opcode(&22) ; ?
+FNundoc(&22)
+FNfetch(1,2)
+;
+.opcode(&23) ; ?
+;MOV R0,#255
+;STRB R0,[mem,#lastmode]
+;BL updatescreen
+;BL force_update_pal
+;SWI "6502_UpdateScreen"
+MOV R0,#229 : MOV R1,#0 : SWI "OS_Byte"
+SWI "OS_ReadC"
+MOV A,R0,LSL#24
+CMP R0,#&1B : ORREQ F,F,#%1
+LDREQB R0,[mem,#&FF]
+ORREQ R0,R0,#&80
+STREQB R0,[mem,#&FF]
+MOV R0,#229 : MOV R1,#1 : SWI "OS_Byte"
+B opcode(&60)
+FNfetch(1,2)
+;
+.opcode(&24) ; BIT n
+FNgetzero(0,1)
+FNbit(0,2,3)
+;
+.opcode(&25) ; AND n
+FNgetzero(0,1)
+FNand(0,2,3)
+;
+.opcode(&26) ; ROL n
+FNgetzero(0,1)
+FNrol(0)
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,5)
+;
+.opcode(&27) ; ?
+FNundoc(&27)
+FNfetch(1,2)
+;
+.opcode(&28) ; PLP
+FNpull(F)
+TST F,#%100
+BNE plp_interrupt_skip
+SUB time,time,#4:ADD zpc,zpc,#1<<16:B fetch2
+
+.plp_interrupt_skip
+FNfetch(1,4)
+;
+.opcode(&29) ; AND #N
+FNgetbyte1(0)
+FNand(0,2,2)
+;
+.opcode(&2A) ; ROL A
+MOV R0,A,LSR#24
+FNrol(0)
+MOV A,R0,LSL#24
+FNfetch(1,2)
+;
+.opcode(&2B) ; ?
+FNundoc(&2B)
+FNfetch(1,2)
+;
+.opcode(&2C) ; BIT nn
+FNgetabs(0,1)
+FNbit(0,3,4)
+;
+.opcode(&2D) ; AND nn
+FNgetabs(0,1)
+FNand(0,3,4)
+;
+.opcode(&2E) ; ROL nn
+FNgetabs(0,1)
+FNrol(0)
+FNstrb(0,1)
+FNfetch(3,6)
+;
+.opcode(&2F) ; ?
+FNundoc(&2F)
+FNfetch(1,2)
+;
+.opcode(&30) ; BMI r
+TST F,#%10000000
+BEQ branch_fetch
+FNbranch
+;
+.opcode(&31) ; AND (n),Y
+FNgetpost2(0,1)
+FNand(0,2,5)
+;
+.opcode(&32) ; AND (n)
+FNgetzeroindir(0,1)
+FNand(0,2,5)
+;
+.opcode(&33) ; ?
+FNundoc(&33)
+FNfetch(1,2)
+;
+.opcode(&34) ; BIT n,X
+FNgetzeroindex(0,1)
+FNbit(0,2,4)
+;
+.opcode(&35) ; AND n,X
+FNgetzeroindex(0,1)
+FNand(0,2,4)
+;
+.opcode(&36) ; ROL n,X
+FNgetzeroindex(0,1)
+FNrol(0)
+STRB R0,[mem,R1,LSR#24]
+FNfetch(2,6)
+;
+.opcode(&37) ; ?
+FNundoc(&37)
+FNfetch(1,2)
+;
+.opcode(&38) ; SEC
+ORR F,F,#%1
+FNfetch(1,2)
+;
+.opcode(&39) ; AND nn,Y
+FNgetabsindex2(0,1,Y)
+FNand(0,3,4)
+;
+.opcode(&3A) ; DEA
+FNdec(A)
+FNfetch(1,2)
+;
+.opcode(&3B) ; ?
+FNundoc(&3B)
+FNfetch(1,2)
+;
+.opcode(&3C) ; BIT nn,X
+FNgetabsindex2(0,1,X)
+FNbit(0,3,4)
+;
+.opcode(&3D) ; AND nn,X
+FNgetabsindex2(0,1,X)
+FNand(0,3,4)
+;
+.opcode(&3E) ; ROL nn,X
+FNgetabsindex(0,1,X)
+FNrol(0)
+FNstrb16(0,1)
+FNfetch(3,7)
+;
+.opcode(&3F) ; ?
+FNundoc(&3F)
+FNfetch(1,2)
+;
+.opcode(&40) ; RTI
+FNpull(F)
+FNpull(1)
+FNpull(zpc)
+ADD zpc,zpc,R1,LSR#8
+;BL interrupt
+;LDR R0,[mem,#min]
+;SUB R0,R0,#time
+;ADD R0,R0,#10
+;STR R0,[mem,#min]
+;MOV time,#10
+
+SUB time,time,#6:B fetch2
+
+FNfetch(0,6) ; yes, that should be 0!
+;
+.opcode(&41) ; EOR (n,X)
+FNgetpre(0,1)
+FNeor(0,2,6)
+;
+.opcode(&42) ; ?
+FNundoc(&42)
+FNfetch(1,2)
+;
+.opcode(&43) ; ?
+FNundoc(&43)
+FNfetch(1,2)
+;
+.opcode(&44) ; ?
+FNundoc(&44)
+FNfetch(1,2)
+;
+.opcode(&45) ; EOR n
+FNgetzero(0,1)
+FNeor(0,2,3)
+;
+.opcode(&46) ; LSR n
+FNgetzero(0,1)
+FNlsr(0)
+STRB R0,[mem,R1]
+FNfetch(2,5)
+;
+.opcode(&47) ; ?
+FNundoc(&47)
+FNfetch(1,2)
+;
+.opcode(&48) ; PHA
+FNpush(A)
+FNfetch(1,3)
+;
+.opcode(&49) ; EOR #N
+FNgetbyte1(0)
+FNeor(0,2,2)
+;
+.opcode(&4A) ; LSR A
+MOVS A,A,LSR#25
+MOV A,A,LSL#24
+FNsetupNZC
+FNfetch(1,2)
+;
+.opcode(&4B) ; (ASR #N - AND #N, LSR A)
+FNgetbyte1(0)      ;
+ANDS A,A,R0,LSL#24 ;
+;FNsetupNZ         ; FNand
+
+MOVS A,A,LSR#25    ;
+FNsetupC           ;
+MOVS A,A,LSL#24    ;
+FNsetupNZ          ; LSR A
+FNfetch(2,0)
+
+;SWI &100+ASC"4"
+;SWI &100+ASC"B"
+;FNfetch(1,2)
+;
+.opcode(&4C) ; JMP nn
+FNgetabs(0,1)
+MOV zpc,R1,LSL#16
+FNfetch(0,3)
+;
+.opcode(&4D) ; EOR nn
+FNgetabs(0,1)
+FNeor(0,3,4)
+;
+.opcode(&4E) ; LSR nn
+FNgetabs(0,1)
+FNlsr(0)
+FNstrb(0,1)
+FNfetch(3,6)
+;
+.opcode(&4F) ; ?
+FNundoc(&4F)
+FNfetch(1,2)
+;
+.opcode(&50) ; BVC r
+TST F,#%1000000
+BNE branch_fetch
+FNbranch
+;
+.opcode(&51) ; EOR (n),Y
+FNgetpost2(0,1)
+FNeor(0,2,5)
+;
+.opcode(&52) ; EOR (n)
+FNgetzeroindir(0,1)
+FNeor(0,2,5)
+;
+.opcode(&53) ; ?
+FNundoc(&53)
+FNfetch(1,2)
+;
+.opcode(&54) ; ?
+FNundoc(&54)
+FNfetch(1,2)
+;
+.opcode(&55) ; EOR n,X
+FNgetzeroindex(0,1)
+FNeor(0,2,4)
+;
+.opcode(&56) ; LSR n,X
+FNgetzeroindex(0,1)
+FNlsr(0)
+STRB R0,[mem,R1,LSR#24] ; zero page STRB
+FNfetch(2,6)
+;
+.opcode(&57) ; ?
+FNundoc(&57)
+FNfetch(1,2)
+;
+.opcode(&58) ; CLI
+;B CLI
+BIC F,F,#%100
+ADD zpc,zpc,#1 << 16
+;LDRB R0,keychk
+;CMP R0,#0
+;BLEQ keyboard
+BL keyboard
+]
+IF NOTtube THEN
+[OPTp
+;BL interrupt
+SUBS time,time,#2:B fetch2
+]
+ENDIF
+[OPTp
+FNfetch(0,2)
+;
+.opcode(&59) ; EOR nn,Y
+FNgetabsindex2(0,1,Y)
+FNeor(0,3,4)
+;
+.opcode(&5A) ; PHY
+FNpush(Y)
+FNfetch(1,3)
+;
+.opcode(&5B) ; ?
+FNundoc(&5B)
+FNfetch(1,2)
+;
+.opcode(&5C) ; ?
+FNundoc(&5C)
+FNfetch(1,2)
+;
+.opcode(&5D) ; EOR nn,X
+FNgetabsindex2(0,1,X)
+FNeor(0,3,4)
+;
+.opcode(&5E) ; LSR nn,X
+FNgetabsindex2(0,1,X)
+FNlsr(0)
+FNstrb16(0,1)
+FNfetch(3,6) ; MRB 17/2/99 should be 3,7 according to data sheet
+;
+.opcode(&5F) ; ?
+FNundoc(&5F)
+FNfetch(1,2)
+;
+.opcode(&60) ; RTS
+FNpull(1)
+FNpull(zpc)
+ADD zpc,zpc,R1,LSR#8
+FNfetch(1,6) ; yes, that should be 1!
+;
+.opcode(&61) ; ADC (n,X)
+FNgetpre(0,1)
+FNadc(0,2,6)
+;
+.opcode(&62) ; ?
+FNundoc(&62)
+FNfetch(1,2)
+;
+.opcode(&63) ; ?
+FNundoc(&63)
+FNfetch(1,2)
+;
+.opcode(&64) ; STZ n
+FNgetbyte1(0)
+MOV R1,#0
+STRB R1,[mem,R0] ; zero page STRB
+FNfetch(2,3)
+;
+.opcode(&65) ; ADC n
+FNgetzero(0,1)
+FNadc(0,2,3)
+;
+.opcode(&66) ; ROR n
+FNgetzero(0,1)
+FNror(0)
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,5)
+;
+.opcode(&67) ; ?
+FNundoc(&67)
+FNfetch(1,2)
+;
+.opcode(&68) ; PLA
+FNpull(A)
+FNfetch(1,4)
+;
+.opcode(&69) ; ADC #N
+FNgetbyte1(0)
+FNadc(0,2,2)
+;
+.opcode(&6A) ; ROR A
+MOV R0,A,LSR#24
+FNror(0)
+MOV A,R0,LSL#24
+FNfetch(1,2)
+;
+.opcode(&6B) ; ?
+FNundoc(&6B)
+FNfetch(1,2)
+;
+.opcode(&6C) ; JMP (nn)
+FNgetabs(0,1)
+ADD R1,R1,#1
+]
+
+REM JMP (&xxFF) bug
+IF NOTmaster OR electron% THEN
+[OPTp
+TST R1,#&FF
+SUBEQ R1,R1,#&100
+MOVEQ R1,R1,LSL#16
+MOVEQ R1,R1,LSR#16
+
+LDRB R1,[mem,R1]
+ADD R0,R0,R1,LSL#8
+MOV zpc,R0,LSL#16
+FNfetch(0,5)
+]
+ELSE
+[OPTp
+MOV R2,#pagetable
+LDRB R2,[R2,R1,LSR#12]
+LDRB R1,[R1,R2,LSL#12]
+
+ADD R0,R0,R1,LSL#8
+MOV zpc,R0,LSL#16
+FNfetch(0,5)
+]
+ENDIF
+[OPTp
+;
+.opcode(&6D) ; ADC nn
+FNgetabs(0,1)
+FNadc(0,3,4)
+;
+.opcode(&6E) ; ROR nn
+FNgetabs(0,1)
+FNror(0)
+FNstrb(0,1)
+FNfetch(3,6)
+;
+.opcode(&6F) ; ?
+FNundoc(&6F)
+FNfetch(1,2)
+;
+.opcode(&70) ; BVS r
+TST F,#%1000000
+BEQ branch_fetch
+FNbranch
+;
+.opcode(&71) ; ADC (n),Y
+FNgetpost2(0,1)
+FNadc(0,2,5)
+;
+.opcode(&72) ; ADC (n)
+FNgetzeroindir(0,1)
+FNadc(0,2,5)
+;
+.opcode(&73) ; ?
+FNundoc(&73)
+FNfetch(1,2)
+;
+.opcode(&74) ; STZ n,X
+FNzeroindex(0,1)
+MOV R0,#0
+STRB R0,[mem,R1,LSR#24]
+FNfetch(2,4)
+;
+.opcode(&75) ; ADC n,X
+FNgetzeroindex(0,1)
+FNadc(0,2,4)
+;
+.opcode(&76) ; ROR n,X
+FNgetzeroindex(0,1)
+FNror(0)
+STRB R0,[mem,R1,LSR#24] ; zero page STRB
+FNfetch(2,6)
+;
+.opcode(&77) ; ?
+FNundoc(&77)
+FNfetch(1,2)
+;
+.opcode(&78) ; SEI
+ORR F,F,#%100
+FNfetch(1,2)
+;
+.opcode(&79) ; ADC nn,Y
+FNgetabsindex2(0,1,Y)
+FNadc(0,3,4)
+;
+.opcode(&7A) ; PLY
+FNpull(Y)
+FNfetch(1,4)
+;
+.opcode(&7B) ; ?
+FNundoc(&7B)
+FNfetch(1,2)
+;
+.opcode(&7C) ; JMP (nn,X)
+]
+IF master THEN
+[OPTp
+FNabs(0,1)
+MOV R0,R1,LSL#16
+ADD R0,R0,X,LSR#8
+
+;LDRB R1,[mem,R0,LSR#16]
+MOV R2,#pagetable
+LDRB R2,[R2,R0,LSR#28]
+MOV R2,R2,LSL#12
+LDRB R1,[R2,R0,LSR#16]
+
+ADD R0,R0,#1 << 16
+;LDRB R0,[mem,R0,LSR#16]
+MOV R2,#pagetable
+LDRB R2,[R2,R0,LSR#28]
+MOV R2,R2,LSL#12
+LDRB R0,[R2,R0,LSR#16]
+
+
+ADD R0,R1,R0,LSL#8
+MOV zpc,R0,LSL#16
+FNfetch(0,6)
+]
+ELSE
+[OPTp
+FNabs(0,1)
+MOV R0,R1,LSL#16
+ADD R0,R0,X,LSR#8
+LDRB R1,[mem,R0,LSR#16]
+ADD R0,R0,#1 << 16
+LDRB R0,[mem,R0,LSR#16]
+ADD R0,R1,R0,LSL#8
+MOV zpc,R0,LSL#16
+FNfetch(0,6)
+]
+ENDIF
+[OPTp
+;
+.opcode(&7D) ; ADC nn,X
+FNgetabsindex2(0,1,X)
+FNadc(0,3,4)
+;
+.opcode(&7E) ; ROR nn,X
+FNgetabsindex(0,1,X)
+FNror(0)
+FNstrb16(0,1)
+FNfetch(3,7)
+;
+.opcode(&7F) ; ?
+FNundoc(&7F)
+FNfetch(1,2)
+;
+.opcode(&80) ; BRA r
+FNbranch
+;
+.opcode(&81) ; STA (n,X)
+FNpre(0,1)
+MOV R0,A,LSR#24
+FNstrb(0,1)
+FNfetch(2,6)
+;
+.opcode(&82) ; ?
+FNundoc(&82)
+FNfetch(1,2)
+;
+.opcode(&83) ; ?
+FNundoc(&83)
+FNfetch(1,2)
+;
+.opcode(&84) ; STY n
+FNgetbyte1(1)
+MOV R0,Y,LSR#24
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,3)
+;
+.opcode(&85) ; STA n
+FNgetbyte1(1)
+MOV R0,A,LSR#24
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,3)
+;
+.opcode(&86) ; STX n
+FNgetbyte1(1)
+MOV R0,X,LSR#24
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,3)
+;
+.opcode(&87) ; (SAX n - store (A AND X) in zero page)
+FNgetbyte1(1)
+ANDS R0,X,A
+FNsetupNZ
+MOV R0,R0,LSR#24
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,0)
+;SWI &100+ASC"8"
+;SWI &100+ASC"7"
+;FNfetch(1,2)
+;
+.opcode(&88) ; DEY
+FNdec(Y)
+FNfetch(1,2)
+;
+.opcode(&89) ; BIT #N
+FNgetbyte1(0)
+TST R0,A,LSR#24
+BIC F,F,#%10 ; N and V unchanged in immediate mode
+ORREQ F,F,#%10
+.branch_fetch
+FNfetch(2,2)
+;
+.opcode(&8A) ; TXA
+MOVS A,X
+FNsetupNZ
+FNfetch(1,2)
+;
+.opcode(&8B) ; ?
+FNundoc(&8B)
+FNfetch(1,2)
+;
+.opcode(&8C) ; STY nn
+FNabs(0,1)
+MOV R0,Y,LSR#24
+FNstrb(0,1)
+FNfetch(3,4)
+;
+.opcode(&8D) ; STA nn
+FNabs(0,1)
+MOV R0,A,LSR#24
+FNstrb(0,1)
+FNfetch(3,4)
+;
+.opcode(&8E) ; STX nn
+FNabs(0,1)
+MOV R0,X,LSR#24
+FNstrb(0,1)
+FNfetch(3,4)
+;
+.opcode(&8F) ; ?
+FNundoc(&8F)
+FNfetch(1,2)
+;
+.opcode(&90) ; BCC r
+TST F,#%1
+BNE branch_fetch
+FNbranch
+;
+.opcode(&91) ; STA (n),Y
+FNpost(0,1)
+MOV R0,A,LSR#24
+FNstrb16(0,1)
+FNfetch(2,6)
+;
+.opcode(&92) ; STA (n)
+FNzeroindir(0,1)
+MOV R0,A,LSR#24
+FNstrb(0,1)
+FNfetch(2,5)
+;
+.opcode(&93) ; ?
+FNundoc(&93)
+FNfetch(1,2)
+;
+.opcode(&94) ; STY n,X
+FNgetzeroindex(0,1)
+MOV R0,Y,LSR#24
+STRB R0,[mem,R1,LSR#24] ; zero page STRB
+FNfetch(2,4)
+;
+.opcode(&95) ; STA n,X
+FNzeroindex(0,1)
+MOV R0,A,LSR#24
+STRB R0,[mem,R1,LSR#24] ; zero page STRB
+FNfetch(2,4)
+;
+.opcode(&96) ; STX n,Y
+FNzeroindexY(0,1)
+MOV R0,X,LSR#24
+STRB R0,[mem,R1,LSR#24] ; zero page STRB
+
+FNfetch(2,4)
+;
+.opcode(&97) ; ?
+FNundoc(&97)
+FNfetch(1,2)
+;
+.opcode(&98) ; TYA
+MOVS A,Y
+FNsetupNZ
+FNfetch(1,2)
+;
+.opcode(&99) ; STA nn,Y
+FNabsindex(0,1,Y)
+MOV R0,A,LSR#24
+FNstrb16(0,1)
+FNfetch(3,5)
+;
+.opcode(&9A) ; TXS
+MOVS zSP,X ; flags not affected
+ORR zSP,zSP,#1
+FNsetupNZ
+FNfetch(1,2)
+;
+.opcode(&9B) ; ?
+FNundoc(&9B)
+FNfetch(1,2)
+;
+.opcode(&9C) ; STZ nn
+FNabs(0,1)
+MOV R0,#0
+FNstrb(0,1)
+FNfetch(3,4)
+;
+.opcode(&9D) ; STA nn,X
+FNabsindex(0,1,X)
+MOV R0,A,LSR#24
+FNstrb16(0,1)
+FNfetch(3,5)
+;
+.opcode(&9E) ; STZ nn,X
+FNabsindex(0,1,X)
+MOV R0,#0
+FNstrb16(0,1)
+FNfetch(3,5)
+;
+.opcode(&9F) ; ?
+FNundoc(&9F)
+FNfetch(1,2)
+;
+.opcode(&A0) ; LDY #N
+FNgetbyte1(0)
+FNldy(0,2,2)
+;
+.opcode(&A1) ; LDA  (n,X)
+FNgetpre(0,1)
+FNlda(0,2,6)
+;
+.opcode(&A2) ; LDX #N
+FNgetbyte1(0)
+FNldx(0,2,2)
+;
+.opcode(&A3) ; ?
+FNundoc(&A3)
+FNfetch(1,2)
+;
+.opcode(&A4) ; LDY n
+FNgetzero(0,1)
+FNldy(0,2,3)
+;
+.opcode(&A5) ; LDA n
+FNgetzero(0,1)
+FNlda(0,2,3)
+;
+.opcode(&A6) ; LDX n
+FNgetzero(0,1)
+FNldx(0,2,3)
+;
+.opcode(&A7) ; ?
+FNundoc(&A7)
+FNfetch(1,2)
+;
+.opcode(&A8) ; TAY
+MOVS Y,A
+FNsetupNZ
+FNfetch(1,2)
+;
+.opcode(&A9) ; LDA #N
+FNgetbyte1(0)
+FNlda(0,2,2)
+;
+.opcode(&AA) ; TAX
+MOVS X,A
+FNsetupNZ
+FNfetch(1,2)
+;
+.opcode(&AB) ; ?
+FNundoc(&AB)
+FNfetch(1,2)
+;
+.opcode(&AC) ; LDY nn
+FNgetabs(0,1)
+FNldy(0,3,4)
+;
+.opcode(&AD) ; LDA nn
+FNgetabs(0,1)
+FNlda(0,3,4)
+;
+.opcode(&AE) ; LDX nn
+FNgetabs(0,1)
+FNldx(0,3,4)
+;
+.opcode(&AF) ; ?
+FNundoc(&AF)
+FNfetch(1,2)
+;
+.opcode(&B0) ; BCS r
+TST F,#%1
+BEQ branch_fetch
+FNbranch
+;
+.opcode(&B1) ; LDA (n),Y
+FNgetpost2(0,1)
+FNlda(0,2,5)
+;
+.opcode(&B2) ; LDA (n)
+FNgetzeroindir(0,1)
+FNlda(0,2,5)
+;
+.opcode(&B3) ; ?
+FNundoc(&B3)
+FNfetch(1,2)
+;
+.opcode(&B4) ; LDY n,X
+FNgetzeroindex(0,1)
+FNldy(0,2,4)
+;
+.opcode(&B5) ; LDA n,X
+FNgetzeroindex(0,1)
+FNlda(0,2,4)
+;
+.opcode(&B6) ; LDX n,Y
+FNgetzeroindexY(0,1)
+FNldx(0,2,4)
+;
+.opcode(&B7) ; ?
+FNundoc(&B7)
+FNfetch(1,2)
+;
+.opcode(&B8) ; CLV
+BIC F,F,#%1000000
+FNfetch(1,2)
+;
+.opcode(&B9) ; LDA nn,Y
+FNgetabsindex2(0,1,Y)
+FNlda(0,3,4)
+;
+.opcode(&BA) ; TSX
+ANDS X,zSP,#&FF000000
+FNsetupNZ
+FNfetch(1,2)
+;
+.opcode(&BB) ; ?
+FNundoc(&BB)
+FNfetch(1,2)
+;
+.opcode(&BC) ; LDY nn,X
+FNgetabsindex2(0,1,X)
+FNldy(0,3,4)
+;
+.opcode(&BD) ; LDA nn,X
+FNgetabsindex2(0,1,X)
+FNlda(0,3,4)
+;
+.opcode(&BE) ; LDX nn,Y
+FNgetabsindex2(0,1,Y)
+FNldx(0,3,4)
+;
+.opcode(&BF) ; ?
+FNundoc(&BF)
+FNfetch(1,2)
+;
+.opcode(&C0) ; CPY #N
+FNgetbyte1(0)
+FNcpy(0,2,2)
+;
+.opcode(&C1) ; CMP (n,X)
+FNgetpre(0,1)
+FNcmp(0,2,6)
+;
+.opcode(&C2) ; ?
+FNundoc(&C2)
+FNfetch(1,2)
+;
+.opcode(&C3) ; ?
+FNundoc(&C3)
+FNfetch(1,2)
+;
+.opcode(&C4) ; CPY n
+FNgetzero(0,1)
+FNcpy(0,2,3)
+;
+.opcode(&C5) ; CMP n
+FNgetzero(0,1)
+FNcmp(0,2,3)
+;
+.opcode(&C6) ; DEC n
+FNgetzero(0,1)
+FNdec(0)
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,5)
+;
+.opcode(&C7) ; ?
+FNundoc(&C7)
+FNfetch(1,2)
+;
+.opcode(&C8) ; INY
+FNinc(Y)
+FNfetch(1,2)
+;
+.opcode(&C9) ; CMP #N
+FNgetbyte1(0)
+FNcmp(0,2,2)
+;
+.opcode(&CA) ; DEX
+FNdec(X)
+FNfetch(1,2)
+;
+.opcode(&CB) ; ?
+FNundoc(&CB)
+FNfetch(1,2)
+;
+.opcode(&CC) ; CPY nn
+FNgetabs(0,1)
+FNcpy(0,3,4)
+;
+.opcode(&CD) ; CMP nn
+FNgetabs(0,1)
+FNcmp(0,3,4)
+;
+.opcode(&CE) ; DEC nn
+FNgetabs(0,1)
+FNdec(0)
+FNstrb(0,1)
+FNfetch(3,6)
+;
+.opcode(&CF) ; ?
+FNundoc(&CF)
+FNfetch(1,2)
+;
+.opcode(&D0) ; BNE r
+TST F,#%10
+BNE branch_fetch
+FNbranch
+;
+.opcode(&D1) ; CMP (n),Y
+FNgetpost2(0,1)
+FNcmp(0,2,5)
+;
+.opcode(&D2) ; CMP (n)
+FNgetzeroindir(0,1)
+FNcmp(0,2,5)
+;
+.opcode(&D3) ; ?
+FNundoc(&D3)
+FNfetch(1,2)
+;
+.opcode(&D4) ; ?
+FNundoc(&D4)
+FNfetch(1,2)
+;
+.opcode(&D5) ; CMP n,X
+FNgetzeroindex(0,1)
+FNcmp(0,2,4)
+;
+.opcode(&D6) ; DEC n,X
+FNgetzeroindex(0,1)
+FNdec(0)
+STRB R0,[mem,R1,LSR#24]
+FNfetch(2,6)
+;
+.opcode(&D7) ; ?
+FNundoc(&D7)
+FNfetch(1,2)
+;
+.opcode(&D8) ; CLD
+TST F,#%1000
+SUBNE table,table,#256*64*4
+BICNE F,F,#%1000
+;ADR table,opcodetable
+FNfetch(1,2)
+;
+.opcode(&D9) ; CMP nn,Y
+FNgetabsindex2(0,1,Y)
+FNcmp(0,3,4)
+;
+.opcode(&DA) ; PHX
+FNpush(X)
+FNfetch(1,3)
+;
+.opcode(&DB) ; ?
+FNundoc(&DB)
+FNfetch(1,2)
+;
+.opcode(&DC) ; (NOP nn,X)
+;SWI &100+ASC"D"
+;SWI &100+ASC"C"
+
+FNfetch(3,0)
+;
+.opcode(&DD) ; CMP nn,X
+FNgetabsindex2(0,1,X)
+FNcmp(0,3,4)
+;
+.opcode(&DE) ; DEC nn,X
+FNgetabsindex(0,1,X)
+FNdec(0)
+FNstrb16(0,1)
+FNfetch(3,7)
+;
+.opcode(&DF) ; ?
+FNundoc(&DF)
+FNfetch(1,2)
+;
+.opcode(&E0) ; CPX #N
+FNgetbyte1(0)
+FNcpx(0,2,2)
+;
+.opcode(&E1) ; SBC (n,X)
+FNgetpre(0,1)
+FNsbc(0,2,6)
+;
+.opcode(&E2) ; ?
+FNundoc(&E2)
+FNfetch(1,2)
+;
+.opcode(&E3) ; ?
+FNundoc(&E3)
+FNfetch(1,2)
+;
+.opcode(&E4) ; CPX n
+FNgetzero(0,1)
+FNcpx(0,2,3)
+;
+.opcode(&E5) ; SBC n
+FNgetzero(0,1)
+FNsbc(0,2,3)
+;
+.opcode(&E6) ; INC n
+FNgetzero(0,1)
+FNinc(0)
+STRB R0,[mem,R1] ; zero page STRB
+FNfetch(2,5)
+;
+.opcode(&E7) ; ?
+FNundoc(&E7)
+FNfetch(1,2)
+;
+.opcode(&E8) ; INX
+FNinc(X)
+FNfetch(1,2)
+;
+.opcode(&E9) ; SBC #N
+FNgetbyte1(0)
+FNsbc(0,2,2)
+;
+.opcode(&EA) ; NOP
+
+FNfetch(1,2)
+;
+.opcode(&EB) ; ?
+FNundoc(&EB)
+FNfetch(1,2)
+;
+.opcode(&EC) ; CPX nn
+FNgetabs(0,1)
+FNcpx(0,3,4)
+;
+.opcode(&ED) ; SBC nn
+FNgetabs(0,1)
+FNsbc(0,3,4)
+;
+.opcode(&EE) ; INC nn
+FNgetabs(0,1)
+FNinc(0)
+FNstrb(0,1)
+FNfetch(3,6)
+;
+.opcode(&EF) ; ?
+FNundoc(&EF)
+FNfetch(1,2)
+;
+.opcode(&F0) ; BEQ r
+TST F,#%10
+BEQ branch_fetch
+FNbranch
+;
+.opcode(&F1) ; SBC (n),Y
+FNgetpost2(0,1)
+FNsbc(0,2,5)
+;
+.opcode(&F2) ; SBC (n)
+FNgetzeroindir(0,1)
+FNsbc(0,2,5)
+;
+.opcode(&F3) ; ?
+FNundoc(&F3)
+FNfetch(1,2)
+;
+.opcode(&F4) ; ?
+FNundoc(&F4)
+FNfetch(1,2)
+;
+.opcode(&F5) ; SBC n,X
+FNgetzeroindex(0,1)
+FNsbc(0,2,4)
+;
+.opcode(&F6) ; INC n,X
+FNgetzeroindex(0,1)
+FNinc(0)
+STRB R0,[mem,R1,LSR#24] ; zero page STRB
+FNfetch(2,6)
+;
+.opcode(&F7) ; ?
+FNundoc(&F7)
+FNfetch(1,2)
+;
+.opcode(&F8) ; SED
+TST F,#%1000
+ADDEQ table,table,#256*64*4
+ORREQ F,F,#%1000
+;ADR table,bcdtable
+FNfetch(1,2)
+;
+.opcode(&F9) ; SBC nn,Y
+FNgetabsindex2(0,1,Y)
+FNsbc(0,3,4)
+;
+.opcode(&FA) ; PLX
+FNpull(X)
+FNfetch(1,4)
+;
+.opcode(&FB) ; ?
+FNundoc(&FB)
+FNfetch(1,2)
+;
+.opcode(&FC) ; ?
+FNundoc(&FC)
+FNfetch(1,2)
+;
+.opcode(&FD) ; SBC nn,X
+FNgetabsindex2(0,1,X)
+FNsbc(0,3,4)
+;
+.opcode(&FE) ; INC nn,X
+FNgetabsindex(0,1,X)
+FNinc(0)
+FNstrb16(0,1)
+FNfetch(3,7)
+;
+.opcode(&FF) ; ?
+FNundoc(&FF)
+FNfetch(1,2)
+;
+]
+NEXT bcd_loop%
+
+REMFOR I%=code+0 TO code+255*4*64 STEP 4
+REMbcd(0)!I%=opcode(0)!I%
+REMNEXT
+P%=bcd(0)
+O%=P%+code
+[OPTp
+FNbcd(&61)
+.bcd(&61) ; ADC (n,X)
+FNgetpre(0,1)
+FNadcBCD(0,2,6)
+
+FNbcd(&65)
+.bcd(&65) ; ADC n
+FNgetzero(0,1)
+FNadcBCD(0,2,3)
+
+FNbcd(&69)
+.bcd(&69) ; ADC #N
+FNgetbyte1(0)
+FNadcBCD(0,2,2)
+
+FNbcd(&6D)
+.bcd(&6D) ; ADC nn
+FNgetabs(0,1)
+FNadcBCD(0,3,4)
+
+FNbcd(&71)
+.bcd(&71) ; ADC (n),Y
+FNgetpost2(0,1)
+FNadcBCD(0,2,5)
+
+FNbcd(&72)
+.bcd(&72) ; ADC (n)
+FNgetzeroindir(0,1)
+FNadcBCD(0,2,5)
+
+FNbcd(&75)
+.bcd(&75) ; ADC n,X
+FNgetzeroindex(0,1)
+FNadcBCD(0,2,4)
+
+FNbcd(&79)
+.bcd(&79) ; ADC nn,Y
+FNgetabsindex(0,1,Y)
+FNadcBCD(0,3,4)
+
+FNbcd(&7D)
+.bcd(&7D) ; ADC nn,X
+FNgetabsindex(0,1,X)
+FNadcBCD(0,3,4)
+
+FNbcd(&E1)
+.bcd(&E1) ; SBC (n,X)
+FNgetpre(0,1)
+FNsbcBCD(0,2,6)
+
+FNbcd(&E5)
+.bcd(&E5) ; SBC n
+FNgetzero(0,1)
+FNsbcBCD(0,2,3)
+FNbcd(&E6)
+
+FNbcd(&E9)
+.bcd(&E9) ; SBC #N
+FNgetbyte1(0)
+FNsbcBCD(0,2,2)
+
+FNbcd(&ED)
+.bcd(&ED) ; SBC nn
+FNgetabs(0,1)
+FNsbcBCD(0,3,4)
+
+FNbcd(&F1)
+.bcd(&F1) ; SBC (n),Y
+FNgetpost2(0,1)
+FNsbcBCD(0,2,5)
+
+FNbcd(&F2)
+.bcd(&F2) ; SBC (n)
+FNgetzeroindir(0,1)
+FNsbcBCD(0,2,5)
+
+FNbcd(&F5)
+.bcd(&F5) ; SBC n,X
+FNgetzeroindex(0,1)
+FNsbcBCD(0,2,4)
+
+FNbcd(&F9)
+.bcd(&F9) ; SBC nn,Y
+FNgetabsindex(0,1,Y)
+FNsbcBCD(0,3,4)
+
+FNbcd(&FD)
+.bcd(&FD) ; SBC nn,X
+FNgetabsindex(0,1,X)
+FNsbcBCD(0,3,4)
+
+FNbcd(&100)
+]
+
+=""
+
+DEFFNbranch
+[OPTp
+MOV R12,zpc,LSR#24
+FNgetbyte1(0)
+ADD zpc,zpc,R0,LSL#16
+CMP R0,#&80
+SUBGE zpc,zpc,#254 << 16
+ADDLT zpc,zpc,#2 << 16
+CMP R12,zpc,LSR#24
+SUBEQ time,time,#1 ; page boundary not crossed
+SUBNE time,time,#2 ; page boundary crossed
+FNfetch(0,2)
+]
+=""
+
+DEFFNtrb(R)
+[OPTp
+TST R,A,LSR#24
+FNsetupZ
+BIC R,R,A,LSR#24
+]
+=""
+
+DEFFNtsb(R)
+[OPTp
+TST R,A,LSR#24
+FNsetupZ
+ORR R,R,A,LSR#24
+]
+=""
+
+DEFFNasl(R)
+[OPTp
+MOVS R,R,LSL#25
+MOV R,R,LSR#24
+FNsetupNZC
+]
+=""
+
+DEFFNlsr(R)
+[OPTp
+BIC F,F,#%10000011
+MOVS R,R,LSR#1
+ORRCS F,F,#%1
+MOVS R2,R,LSL#24
+ORRMI F,F,#%10000000
+ORREQ F,F,#%10
+]
+=""
+
+DEFFNrol(R)
+IF R=1 STOP
+[OPTp
+;MOVS R2,F,RRX ; MOVE 6502 CARRY INTO ARM CARRY
+AND R2,F,#%1
+BIC F,F,#%10000011
+MOVS R,R,LSL#24
+ORR R,R,R2,LSL#23
+MOVS R,R,LSL#1
+MOV R,R,LSR#24
+FNsetupNZC
+]
+=""
+
+DEFFNror(R)
+IF R=1 STOP
+[OPTp
+MOVS R2,F,RRX ; MOVE 6502 CARRY INTO ARM CARRY
+BIC F,F,#%10000011
+ORRCS F,F,#%10000000 ; N -> what C was
+ADD R,R,R,LSL#24
+MOVS R,R,RRX
+ORRCS F,F,#%1
+MOVS R,R,LSR#24
+ORREQ F,F,#%10
+]
+=""
+
+
+DEFFNcmp(R,F%,T%)
+[OPTp
+SUBS R0,A,R,LSL#24
+FNsetupNZC
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNcpx(R,F%,T%)
+[OPTp
+SUBS R0,X,R,LSL#24
+FNsetupNZC
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNcpy(R,F%,T%)
+[OPTp
+SUBS R0,Y,R,LSL#24
+FNsetupNZC
+FNfetch(F%,T%)
+]
+=""
+
+REMDEFFNadc(R,F%,T%)
+[OPTp
+MOVS R2,F,RRX ; MOVE 6502 CARRY INTO ARM CARRY
+MVN R2,#0 ; R2=-1
+BIC R2,R2,#&FF << 24
+ADD R2,R2,A
+ADCS R2,R2,R,LSL#24
+ANDS A,R2,#&FF << 24 ; only affects Z,N!
+FNsetupCZVN
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNadc(R,F%,T%)
+[OPTp
+AND R2,F,#%1
+ADD R2,R2,R
+ADDS A,A,R2,LSL#24
+FNsetupCZVN
+CMP R2,#&100 : ORREQ F,F,#%1
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNadcBCD(R,F%,T%)
+[OPTp
+MOVS R2,F,RRX ; MOVE 6502 CARRY INTO ARM CARRY
+AND R2,A,#&0F << 24
+AND R13,R,#&F
+;ADDCS R2,R2,#1 << 24
+ADC R13,R13,R2,LSR#24
+CMP R13,#&A
+ADDGE R13,R13,#&06
+
+CMP R13,#&20
+SUBGE R13,R13,#&10
+
+MOV R,R,LSR#4
+ADD R,R,A,LSR#28
+ADD A,R13,R,LSL#4
+CMP A,#&A0
+ADDGE A,A,#&60
+ANDS R2,A,#&300
+ORRNE F,F,#%1
+BICEQ F,F,#%1
+MOVS A,A,LSL#24
+FNsetupNZ ; Master elite needs N flag?
+FNfetch3(F%,T%)
+]
+=""
+
+DEFFNsbcBCD(R,F%,T%)
+[OPTp
+
+MOVS R2,F,RRX ; MOVE 6502 CARRY INTO ARM CARRY
+AND R2,A,#&0F << 24
+AND R13,R,#&F
+RSCS R13,R13,R2,LSR#24
+SUBCC R13,R13,#6
+AND R13,R13,#&F
+MOV R,R,LSR#4
+RSCS R,R,A,LSR#28
+SUBCC R,R,#6
+FNsetupC
+
+AND R,R,#&F
+ADD A,R13,R,LSL#4
+MOVS A,A,LSL#24
+FNsetupNZ
+FNfetch3(F%,T%)
+]
+=""
+
+DEFFNsbc(R,F%,T%)
+[OPTp
+MOVS R2,F,RRX ; MOVE 6502 CARRY INTO ARM CARRY
+SBCS A,A,R,LSL#24
+FNsetupCZVN
+ANDS A,A,#&FF << 24
+BICNE F,F,#%10
+ORREQ F,F,#%10 ; FNsetupZ
+FNfetch(F%,T%)
+]
+=""
+
+
+MOVS R2,F,RRX ; MOVE 6502 CARRY INTO ARM CARRY
+MOV A,A,ASR#24
+MOV R,R,LSL#24
+MOV R,R,ASR#24
+EOR R,R,#&FF << 24
+EOR R,R,#&FF << 16
+EOR R,R,#&FF << 8
+EOR A,A,#&FF << 24
+EOR A,A,#&FF << 16
+EOR A,A,#&FF << 8
+SBCS A,A,R
+MOV A,A,LSL#24
+FNsetupCZVN
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNbit(R,F%,T%)
+[OPTp
+AND R2,R,#%11000000
+ANDS R,R,A,LSR#24
+BIC F,F,#%11000010
+ADD F,F,R2
+ORREQ F,F,#%10
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNeor(R,F%,T%)
+[OPTp
+EORS A,A,R,LSL#24
+FNsetupNZ
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNand(R,F%,T%)
+[OPTp
+ANDS A,A,R,LSL#24
+FNsetupNZ
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNora(R,F%,T%)
+[OPTp
+ORRS A,A,R,LSL#24
+FNsetupNZ
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNlda(R,F%,T%)
+[OPTp
+MOVS A,R,LSL#24
+FNsetupNZ
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNldx(R,F%,T%)
+[OPTp
+MOVS X,R,LSL#24
+FNsetupNZ
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNldy(R,F%,T%)
+[OPTp
+MOVS Y,R,LSL#24
+FNsetupNZ
+FNfetch(F%,T%)
+]
+=""
+
+DEFFNinc(R)
+IF R=X OR R=Y OR R=A THEN
+[OPTp
+ADDS R,R,#1 << 24
+]
+ELSE
+[OPTp
+ADD R,R,#1
+MOVS R2,R,LSL#24
+]
+ENDIF
+[OPTp
+FNsetupNZ
+]
+=""
+
+DEFFNdec(R)
+IF R=X OR R=Y OR R=A THEN
+[OPTp
+SUBS R,R,#1 << 24
+]
+ELSE
+[OPTp
+SUB R,R,#1
+MOVS R2,R,LSL#24
+]
+ENDIF
+[OPTp
+FNsetupNZ
+]
+=""
+
+DEFFNsetupNZ
+[OPTp
+BIC F,F,#%10000010
+ORREQ F,F,#%10
+ORRMI F,F,#%10000000
+]
+=""
+
+DEFFNsetupZ
+[OPTp
+BIC F,F,#%10
+ORREQ F,F,#%10
+]
+=""
+
+DEFFNsetupC
+[OPTp
+BIC F,F,#%1
+ORRCS F,F,#%1
+]
+=""
+
+DEFFNsetupNZC
+[OPTp
+BIC F,F,#%10000011
+ORRCS F,F,#%1
+ORREQ F,F,#%10
+ORRMI F,F,#%10000000
+]
+=""
+
+DEFFNsetupCZVN
+[OPTp
+BIC F,F,#%11000011
+ORRCS F,F,#%1
+ORREQ F,F,#%10
+ORRVS F,F,#%1000000
+ORRMI F,F,#%10000000
+]
+=""
+
+DEFFNsetupCzVN
+[OPTp
+BIC F,F,#%11000011
+ORRCS F,F,#%1
+ORRVS F,F,#%1000000
+ORRMI F,F,#%10000000
+]
+=""
+
+DEFFNgetpre(R,S)
+[OPTp
+FNpre(R,S)
+;LDRB R,[mem,R]
+FNldrb2(R,S)
+]
+=""
+
+DEFFNpre(R,S)
+[OPTp
+FNgetbyte1(R)
+ADD R,X,R,LSL#24
+LDRB S,[mem,R,LSR#24] ; zero page LDRB
+ADD R,R,#1 << 24
+LDRB R,[mem,R,LSR#24] ; zero page LDRB
+ADD S,S,R,LSL#8
+]
+=""
+
+DEFFNgetzero(R,S)
+[OPTp
+FNgetbyte1(S)
+LDRB R,[mem,S] ; zero page LDRB
+]
+=""
+
+DEFFNgetabs(R,S)
+[OPTp
+FNabs(R,S)
+;LDRB R,[mem,S]
+FNldrb2(R,S)
+]
+=""
+
+DEFFNabs(R,S)
+[OPTp
+FNgetbyte2(R,S)
+ADD S,R,S,LSL#8
+;FNstrb
+]
+=""
+
+DEFFNgetpost(R,S)
+[OPTp
+FNpost(R,S)
+;LDRB R,[mem,R,LSR#16]
+FNldrb16(R,S)
+]
+=""
+
+DEFFNpost(R,S)
+[OPTp
+FNgetbyte1(R)
+MOV R,R,LSL#24
+LDRB S,[mem,R,LSR#24] ; zero page LDRB
+ADD R,R,#1 << 24
+LDRB R,[mem,R,LSR#24] ; zero page LDRB
+ADD R,S,R,LSL#8
+MOV R,R,LSL#16
+ADD S,R,Y,LSR#8
+;FNstrb16
+]
+=""
+
+DEFFNgetpost2(R,S) : REM +1 if page boundary crossed
+[OPTp
+FNpost2(R,S)
+;LDRB R,[mem,R,LSR#16]
+FNldrb16(R,S)
+]
+=""
+
+DEFFNpost2(R,S) : REM +1 if page boundary crossed
+[OPTp
+FNgetbyte1(R)
+MOV R,R,LSL#24
+LDRB S,[mem,R,LSR#24] ; zero page LDRB
+ADD R,R,#1 << 24
+LDRB R,[mem,R,LSR#24] ; zero page LDRB
+ADD R,S,R,LSL#8
+MOV R,R,LSL#16
+ADD S,R,Y,LSR#8
+MOV R2,S,LSR#24:CMP R2,R,LSR#24:SUBNE time,time,#1
+;FNstrb16
+]
+=""
+
+DEFFNgetzeroindir(R,S)
+[OPTp
+FNzeroindir(R,S)
+;LDRB R,[mem,S]
+FNldrb2(R,S)
+]
+=""
+
+DEFFNzeroindir(R,S)
+[OPTp
+FNgetbyte1(R)
+MOV R,R,LSL#24
+LDRB S,[mem,R,LSR#24] ; zero page LDRB
+ADD R,R,#1 << 24
+LDRB R,[mem,R,LSR#24] ; zero page LDRB
+ADD S,S,R,LSL#8
+]
+=""
+
+DEFFNgetabsindex(R,S,T) REM T=X or Y
+[OPTp
+FNabsindex(R,S,T)
+;LDRB R,[mem,S,LSR#16]
+FNldrb16(R,S)
+]
+=""
+
+DEFFNabsindex(R,S,T) REM T=X or Y
+[OPTp
+FNgetbyte2(R,S)
+ADD R,R,S,LSL#8
+MOV R,R,LSL#16
+ADD S,R,T,LSR#8
+]
+=""
+
+DEFFNgetabsindex2(R,S,T) REM T=X or Y, +1 if page boundary crossed
+IF R<>0 OR S<>1 THEN STOP
+IF T<>X AND T<>Y THEN STOP
+[OPTp
+FNabsindex2(R,S,T)
+;LDRB R,[mem,S,LSR#16]
+FNldrb16(R,S)
+]
+=""
+
+DEFFNabsindex2(R,S,T) REM T=X or Y, +1 if page boundary crossed
+[OPTp
+FNgetbyte2(R,S)
+ADD R,R,S,LSL#8
+MOV R,R,LSL#16
+ADD S,R,T,LSR#8
+MOV R2,S,LSR#24:CMP R2,R,LSR#24:SUBNE time,time,#1
+]
+=""
+
+DEFFNgetzeroindex(R,S)
+[OPTp
+FNzeroindex(R,S)
+LDRB R,[mem,S,LSR#24] ; zero page LDRB
+]
+=""
+
+DEFFNzeroindex(R,S)
+[OPTp
+FNgetbyte1(R)
+ADD S,X,R,LSL#24
+]
+=""
+
+DEFFNgetzeroindexY(R,S)
+[OPTp
+FNzeroindexY(R,S)
+LDRB R,[mem,S,LSR#24] ; zero page LDRB
+]
+=""
+
+DEFFNzeroindexY(R,S)
+[OPTp
+FNgetbyte1(R)
+ADD S,Y,R,LSL#24
+]
+=""
+
+DEFFNgetbyte1(R)
+IF master THEN
+[OPTp
+ADD R,zpc,#1 << 16
+;LDRB R,[mem,R,LSR#16] ; instruction fetch
+MOV R2,#pagetable
+LDRB R2,[R2,R,LSR#28]
+MOV R2,R2,LSL#12
+LDRB R,[R2,R,LSR#16]
+]
+ELSE
+[OPTp
+ADD R,zpc,#1 << 16
+LDRB R,[mem,R,LSR#16] ; instuction fetch
+]
+ENDIF
+=""
+
+DEFFNgetbyte2(R,S)
+IF master THEN
+[OPTp
+;ADD S,mem,zpc,LSR#16
+;LDRB R,[S,#1]
+;LDRB S,[S,#2] ; instruction fetches
+ADD R,zpc,#1 << 16
+MOV R2,#pagetable
+LDRB S,[R2,R,LSR#28]
+MOV S,S,LSL#12
+LDRB R,[S,R,LSR#16]
+ADD S,zpc,#2 << 16
+;MOV R2,#pagetable
+LDRB R2,[R2,S,LSR#28]
+MOV R2,R2,LSL#12
+LDRB S,[R2,S,LSR#16]
+]
+ELSE
+[OPTp
+ADD S,mem,zpc,LSR#16
+LDRB R,[S,#1]
+LDRB S,[S,#2] ; instuction fetches
+]
+ENDIF
+=""
+
+DEFFNpull(R)
+CASE R OF
+WHEN F
+[OPTp
+ADD zSP,zSP,#1 << 24
+LDRB R1,[mem,zSP,ROR#24]
+BIC F,F,#&FF
+ORR F,F,R1
+BL reset_bcdflag
+]
+WHEN A,X,Y
+[OPTp
+ADD zSP,zSP,#1 << 24
+LDRB R0,[mem,zSP,ROR#24]
+MOVS R,R0,LSL#24
+FNsetupNZ
+]
+OTHERWISE
+[OPTp
+ADD zSP,zSP,#1 << 24
+LDRB R0,[mem,zSP,ROR#24]
+MOV R,R0,LSL#24
+]
+ENDCASE
+=""
+
+DEFFNpush(R)
+IF R=F OR R=0 OR R=1 THEN
+[OPTp ;a
+STRB R,[mem,zSP,ROR#24]
+SUB zSP,zSP,#1 << 24
+]
+ELSE
+[OPTp ;b
+MOV R0,R,LSR#24
+STRB R0,[mem,zSP,ROR#24]
+SUB zSP,zSP,#1 << 24
+]
+ENDIF
+=""
+

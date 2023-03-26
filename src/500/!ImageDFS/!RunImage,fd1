@@ -1,0 +1,2324 @@
+REM ImageDFS desktop bit v0.80  (10/01/14)
+REM
+REM LEN Stephen Harrison, 1996
+:
+REM LOCK infobox%,quitmenu%,newtypemenu%,typeinfo%,newnumber%,typeeditmenu%
+:
+betatest%=TRUE
+IF FNfindtask("ImageDFS")<>0 THEN END
+PROCinitdesk("ImageDFS")
+PROCrundesk
+PROCclosedown
+IF quittype%=1 THEN *RMKill ImageDFS
+END
+
+
+DEFPROCclosedown
+ON ERROR PROCexiterror
+IF messages%<>0 THEN PROCclosemessages
+SYS "Wimp_CloseDown"
+wimp_running%=FALSE
+ENDPROC
+
+
+DEF PROCiniterror
+IF wimp_running% THEN
+ PROCcancelbox("","Error while initialising: "+REPORT$+" at line "+STR$ERL)
+ SYS "Wimp_CloseDown"
+ELSE
+ REPORT:PRINT" at line ";ERL/10
+ENDIF
+END
+ENDPROC
+
+
+DEF PROCexiterror
+IF wimp_running% THEN
+ PROCcancelbox("","Error while quitting: "+REPORT$)
+ SYS "Wimp_CloseDown"
+ELSE
+ REPORT:PRINT" at line ";ERL/10
+ENDIF
+END
+ENDPROC
+
+
+DEF PROCerror
+REM click%=FNokcancelbox("",REPORT$+" at line "+STR$ERL+". Click OK to continue or Cancel to quit.")
+click%=FNokcancelbox("",REPORT$+". Click OK to continue or Cancel to quit. ("+STR$ERL+")")
+IF click%=%10 THEN PROCclosedown:END
+ENDPROC
+
+
+DEF PROCokbox(boxtitle$,message$)       :REM assumes it is an error, unless boxtitle$<>""
+$(block%+4)=message$+CHR$0
+IF boxtitle$="" THEN boxtitle$=title$:!block%=ERR:flags%=%00001 ELSE !block%=1:flags%=%10001
+:
+SYS "Wimp_ReportError",block%,flags%,boxtitle$
+ENDPROC
+
+
+DEF PROCcancelbox(boxtitle$,message$)   :REM assumes it is an error, unless boxtitle$<>""
+$(block%+4)=message$+CHR$0
+IF boxtitle$="" THEN boxtitle$=title$:!block%=ERR:flags%=%00010 ELSE !block%=1:flags%=%10010
+:
+SYS "Wimp_ReportError",block%,flags%,boxtitle$
+ENDPROC
+
+
+DEF FNokcancelbox(boxtitle$,message$)   :REM assumes it is an error, unless boxtitle$<>""
+$(block%+4)=message$+CHR$0
+IF boxtitle$="" THEN boxtitle$=title$:!block%=ERR:flags%=%00011 ELSE !block%=1:flags%=%10011
+:
+SYS "Wimp_ReportError",block%,flags%,boxtitle$ TO ,response%
+=response% :REM 1=Ok, 2=Cancel
+
+
+DEF PROCinitdesk(app$)
+wimp_running%=FALSE
+ON ERROR PROCiniterror:END
+title$=app$
+:
+PROCloadsprites
+:
+blocklen%=2048
+quit%=FALSE
+riscos%=3.00
+:
+DIM block% blocklen%
+$block%="TASK"
+block%!4=&400C1
+block%!8=&400C0
+block%!12=4
+block%!16=3
+block%!20=2
+block%!24=&400CC
+block%!28=&502
+block%!32=0
+:
+SYS "Wimp_Initialise",riscos%*100,!block%,title$,block%+4 TO riscos%,task%
+wimp_running%=TRUE
+:
+PROCloadtemplates
+PROCiniticons
+PROCinitvars
+PROCinitmenus
+PROCinitwindows
+PROCassmformat
+messages%=FALSE
+ENDPROC
+
+
+DEF FNfilelength(file$)
+LOCAL x,len
+x=OPENIN(file$)
+len=EXT#x
+CLOSE#x
+=len
+
+
+DEF PROCloadsprites
+LOCAL sprite$
+SYS "OS_ReadModeVariable",MODE,5 TO ,,yeig%
+IF yeig%=2 THEN sprite$="Sprites" ELSE sprite$="Sprites22"
+:
+file%=OPENIN("<ImageDFS$Dir>.Resources."+sprite$)
+IF file%=0 AND sprite$="Sprites22" THEN
+ sprite$="Sprites"
+ file%=OPENIN("<ImageDFS$Dir>.Resources."+sprite$)
+ENDIF
+spritelen%=EXT#file%
+CLOSE#file%
+:
+DIM sprites% spritelen%+32
+!sprites%=spritelen%+32
+sprites%!8=16
+SYS "OS_SpriteOp",256+9,sprites%
+SYS "OS_SpriteOp",256+10,sprites%,"<ImageDFS$Dir>.Resources."+sprite$
+ENDPROC
+
+
+DEF PROCloadtemplates
+LOCAL template$,var$,opts3d%,id%,ind_len%,info_len%,panel_len%
+:
+template$="Template3D"
+temps_3d=FALSE
+:
+IF riscos%>=300 THEN
+ DIM opts3d% 60
+ SYS "XOS_ReadVarVal","ImageDFS$3D",opts3d%,60,0,0 TO ;flags%
+ IF (flags% AND 1)=0 THEN
+  var$=FNblocktostring(opts3d%)
+  IF INSTR(var$,"Yes")>0 THEN template$="Template3D":temps_3d=TRUE
+  IF INSTR(var$,"StyleGuide")>0 THEN template$="Template3D":temps_3d=TRUE
+ ENDIF
+ENDIF
+:
+maxicons%=24
+optlen%=1024
+:
+ind_len%=4*1024
+IF blocklen%<88+32*maxicons%+optlen% ERROR 255,"'block%' too small"
+DIM ind% ind_len%
+DIM id% 12
+:
+SYS "Wimp_OpenTemplate",,"<ImageDFS$Dir>.Resources."+template$
+$id%="driveselect"
+SYS "Wimp_LoadTemplate",,block%,ind%,ind%+ind_len%,-1,id%,0 TO ,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO driveselect%
+$id%="Options"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO options%
+$id%="OptWindow"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO optwindow%
+$id%="filetypes"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO filetypes%
+$id%="ARCtypes"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO ARCtypes%
+$id%="progInfo"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+block%!64=sprites%
+SYS "Wimp_CreateWindow",,block% TO infobox%
+$id%="CreateImage"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO imagehandling%
+$id%="xfer_send"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO xfer_send%
+$id%="Readfloppy"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO readfloppy%
+$id%="xfer_pane"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO xfer_pane%
+$id%="typeinfo"
+SYS "Wimp_LoadTemplate",,block%,remain%,ind%+ind_len%,-1,id%,next% TO,,remain%,,,,next%
+SYS "Wimp_CreateWindow",,block% TO typeinfo%
+SYS "Wimp_CloseTemplate"
+ENDPROC
+
+
+DEF PROCiniticons
+DIM iconname% 12
+DIM icontext% 12
+$iconname%="s!ImageDFS"
+$icontext%="DFS"
+:
+iconbaricon%=FNcreate_icon(-6,0,-16,46*2,68+38,%11000100001011 OR &17<<24,"",icontext%,iconname%,12,&10000000)
+:
+opts_acrn% =5
+opts_ret0% =6
+opts_fstld%=7
+opts_40sng%=8
+opts_all62%=12
+opts_DD62% =14
+opts_all31%=16
+opts_noicn%=20
+:
+optwd_save%=3
+optwd_cncl%=2
+optwd_ok%  =1
+optwd_pane%=0
+:
+ftype_use% =0
+ftype_type%=6   :ftypestr%=FNfindindstr(filetypes%,ftype_type%)
+ftype_load%=1   :ftypeloadstr%=FNfindindstr(filetypes%,ftype_load%)
+ftype_exec%=3   :ftypeexecstr%=FNfindindstr(filetypes%,ftype_exec%)
+:
+image_sd%  =1
+image_dd%  =14
+image_40t% =2
+image_80t% =3
+image_31f% =17
+image_62f% =18
+image_ds%  =4
+image_size%=8   :imagesizestr%=FNfindindstr(imagehandling%,image_size%)
+image_dtl1%=10  :imagedtl1str%=FNfindindstr(imagehandling%,image_dtl1%)
+image_dtl2%=11  :imagedtl2str%=FNfindindstr(imagehandling%,image_dtl2%)
+readdiscicon%=19
+:
+readf_dr0%=1
+readf_dr1%=2
+readf_dr2%=3
+readf_dr3%=11
+readf_bar% =12
+readf_text%=10  :readftextstr%=FNfindindstr(readfloppy%,readf_text%)
+readf_top% =8
+readf_botm%=9
+readf_cncl%=5
+readf_abrt%=15
+readf_read%=6
+readf_pause%=13
+readf_cntn%=14
+readf_ok%=16
+:
+readf_barmaxlength%=724
+:
+xfer_file%=3
+xfer_ok%  =0
+xfer_text%=2    :xfer_sendstr%=FNfindindstr(xfer_send%,xfer_text%)
+:               :xfer_panestr%=FNfindindstr(xfer_pane%,xfer_text%)
+:
+DIM drsel_maptodfsx(3)
+drsel_dr0%=10   :drsel_maptodfsx(0)=60
+drsel_dr1%=11   :drsel_maptodfsx(1)=174
+drsel_dr2%=12   :drsel_maptodfsx(2)=288
+drsel_dr3%=13   :drsel_maptodfsx(3)=402 :REM x pos of icons
+drsel_bg0%=14
+drsel_bg1%=15
+drsel_no2%=17
+drsel_no3%=18
+drsel_ok%  =19
+drsel_save%=17
+drsel_cncl%=18
+:
+typei_type%=5   :typei_typestr%=FNfindindstr(typeinfo%,typei_type%)
+typei_num% =2   :typei_numstr% =FNfindindstr(typeinfo%,typei_num%)
+typei_load%=3   :typei_loadstr%=FNfindindstr(typeinfo%,typei_load%)
+typei_exec%=6   :typei_execstr%=FNfindindstr(typeinfo%,typei_exec%)
+typei_spr% =0   :typei_sprdata%=FNfindindstr(typeinfo%,typei_spr%)
+ENDPROC
+
+
+DEF PROCinitvars                :REM GLOBAL variables!
+menuopen%=FALSE
+:
+editingtype%=FALSE              :REM type being edited by type handler
+currenttype%=FALSE              :REM type with menu clicked over it
+numselected%=0
+DIM selectedtypes% 1024
+FOR clear=0 TO 1023 STEP 4:clear!selectedtypes%=0:NEXT :REM used for list of selected
+PROCselecttype(2)
+:
+readingfloppy%=FALSE
+readfloppydrive%=1
+readingside%=0
+sizeofdisc%=0
+DIM testrecord 64               :REM used by PROCstartfloppyread
+:
+DIM readf_drive(3)              :REM array to convert from physical drive to drive window icon
+readf_drive(0)=readf_dr0%:readf_drive(1)=readf_dr1%
+readf_drive(2)=readf_dr2%:readf_drive(3)=readf_dr3%
+:
+currentlydraging%=0             :REM 10,11,12,13,14,15 for drive dragging, 3 for save dragging
+savingfrom%=FALSE
+desthand%=0                     :REM for message transfers
+:
+savetransfer%=FALSE
+transferpause%=FALSE
+transfername$=""
+transferfile%=0
+transferlock%=0
+transfered%=0
+DIM transbuf 18*256*2
+:
+DIM drsel_drive(3)              :REM array to convert from physical drive to drive window icon
+drsel_drive(0)=drsel_dr0%:drsel_drive(1)=drsel_dr1%
+drsel_drive(2)=drsel_dr2%:drsel_drive(3)=drsel_dr3%
+:
+info_user%=FNfindindstr(infobox%,9)
+OSCLI"Load <ImageDFS$Dir>.Resources.SerialNo "+STR$~info_user%
+:
+PROCcheckmaxdrives
+PROCinitchoices :REM set loaddesk%
+ENDPROC
+
+
+DEF PROCinitmenus
+DIM quitmenu% 28+24*2                           : REM 28+24*number of items in menu
+DIM iconbarmenu% 28+24*6                        : REM 28+24*number of items in menu
+DIM typesmenu% 28+24*5                          : REM 28+24*number of items in menu
+DIM newtypemenu% 28+24*1                        : REM 28+24*number of items in menu
+DIM typeeditmenu% 28+24*5                       : REM 28+24*number of items in menu
+DIM newnumber% 28+24*1                          : REM 28+24*number of items in menu
+:
+temp%=FNcreatemenu(quitmenu%,"Quit,2,0,0,Desktop icon,&80,0,Whole program")
+ibmenu_len%=FNcreatemenu(iconbarmenu%,"ImageDFS,6,0,infobox%,Info,0,0,Image files...,0,0,DFS drives...,0,0,Filetypes...,0,0,Configure...,&80,quitmenu%,Quit")
+ibmenu_len%=FNdotted(iconbarmenu%,0,ibmenu_len%)
+ibmenu_len%=FNdotted(iconbarmenu%,4,ibmenu_len%)
+:
+temp%=FNcreatemenu(newtypemenu%,"New filetype,1,&84,0,01234567")
+newtypeaddr%=indirectedmenu
+temp%=FNcreatemenu(newnumber%,"New position,1,&84,0,012")
+newposition%=indirectedmenu
+temp%=FNcreatemenu(typeeditmenu%,"Filetype,5,%1<<3,newtypemenu%,Rename,0,0,Edit,0,0,Remove,0,typeinfo%,Info,&80,newnumber%,Move")
+ENDPROC
+
+
+DEF PROCinitwindows
+info_version%=FNfindindstr(infobox%,4)
+SYS"ImageDFS_Version" TO version%
+ver$=STR$(version% DIV 100)+"."+LEFT$(STR$(version% MOD 100)+"00",2)
+IF betatest% THEN ver$=ver$+"b"
+$info_version%=ver$+" (11 Jan 2014)"
+info_purpose%=FNfindindstr(infobox%,2)
+IF VAL(MID$(TIME$,17,2))>=18 THEN $info_purpose%="To load Elite"
+:
+optnewmd% =FALSE                                :REM used to stop pane being separated
+optctr_x% =750/2+32/2    :REM 802/2
+optctr_y% =460/2+16    :REM 500/2
+optpane_x%=0                                    :REM \   These are set up for the current
+optpane_y%=0                                    :REM  }_ mode, when 'optwindow%' is opened
+optbdr_wd%=0                                    :REM  }  for the first time and redone
+optbdr_ht%=0                                    :REM /   when the mode is changed
+:
+typesnewmd%=FALSE
+typespane_x%=30
+typespane_y%=-334+192
+typesallselected%=FALSE
+typesselected%=0
+numberoftypes%=0
+:
+xfernewmd%=FALSE
+xferpane_x%=598
+xferpane_y%=-522+182
+:
+PROCsettypeextent
+PROCedittype(1)         :REM init filetypes window to be editing the first type
+ENDPROC
+
+
+DEF PROCrundesk
+quit%=FALSE
+quittype%=0    :REM =1 if remove module
+:
+ON ERROR LOCAL PROCerror
+:
+WHILE NOT quit%
+ PROCwimppoll
+ENDWHILE
+:
+ENDPROC
+
+
+DEF PROCwimppoll
+SYS "Wimp_Poll",0,block% TO reason%
+CASE reason% OF
+ WHEN 00 : IF savetransfer% THEN PROCtransfertrack   : REM search a chunk...
+ WHEN 01 : PROCredraw(!block%)                  : REM redraw window request
+ WHEN 02 : PROCreopenwindow(!block%)            : REM re-open window request
+ WHEN 03 : PROCclosewindow(!block%)             : REM close window request
+ WHEN 04 :                                      : REM pointer leaving window
+ WHEN 05 :                                      : REM pointer entering window
+ WHEN 06 : PROCclick(block%!12)                 : REM mouse click
+ WHEN 07 : PROCdragended                        : REM user drag box
+ WHEN 08 : PROCkeypress(block%!24,!block%)      : REM key pressed
+ WHEN 09 : PROCmenuselect                       : REM menu selection
+ WHEN 10 :                                      : REM scroll request
+ WHEN 11 :                                      : REM lose caret
+ WHEN 12 :                                      : REM gain caret
+ WHEN 13 :                                      : REM pollWord non-zero (Risc OS3 only)
+ WHEN 14 :                                      : REM *** reserved ***
+ WHEN 15 :                                      : REM *** reserved ***
+ WHEN 16 :                                      : REM *** reserved ***
+ WHEN 17 : PROCreceive                          : REM user message
+ WHEN 18 : PROCreceive                          : REM user message recorded
+ WHEN 19 :                                      : REM user message acknowledged
+ENDCASE
+ENDPROC
+
+
+DEF FNcreate_icon(whand%,icon_x%,icon_y%,icon_w%,icon_h%,flags%,text$,ptr1%,ptr2%,ptr3%,priority%)
+block%!00=whand%
+block%!04=icon_x%
+block%!08=icon_y%
+block%!12=icon_w%+icon_x%
+block%!16=icon_h%+icon_y%
+block%!20=flags%                :REM see Wimp Prog pages 64+65 for flags
+:
+IF ptr1%=0 THEN
+ $(block%+24)=text$
+ELSE
+ block%!24=ptr1%                :REM see Wimp Prog pages 67+68 for indirecting icons
+ block%!28=ptr2%                :REM see Wimp Prog pages 75+76 for validation strings
+ block%!32=ptr3%
+ENDIF
+:
+IF whand%>0 THEN priority%=0    :REM priority% added 05/09/96
+SYS "Wimp_CreateIcon",priority%,block% TO ihandle%
+=ihandle%
+
+
+DEF PROCredraw(window%)
+CASE window% OF
+ WHEN ARCtypes% : PROCredrawtypes
+ENDCASE
+ENDPROC
+
+
+DEF PROCredrawtypes
+LOCAL more%,addr,types,maxtypes,filetype,colours%,yeig%
+SYS"ImageDFS_ReadFiletypeMap",-1 TO maxtypes
+:
+SYS"Wimp_RedrawWindow",,block% TO more%
+IF riscos%<337 THEN fhand%=0 ELSE SYS"Wimp_ReadSysInfo",8 TO fhand%:IF fhand%<>0 SYS"Font_SetFont",fhand%:SYS"Wimp_SetFontColours",,0,7
+SYS"Wimp_SetColour",7
+:
+SYS"OS_ReadModeVariable",-1,3 TO ,,colours%
+:
+WHILE more%
+ gfx_x%=block%!4-block%!20  :REM min work x = visible min x - scrolled x  (NR x doesn't scroll)
+ gfx_y%=block%!16-block%!24 :REM max work y = visible max y - scrolled y
+ gfx_x%+=8:gfx_y%-=8        :REM align correctly for text printin
+ :
+ IF maxtypes>0 THEN
+  FOR type=1 TO maxtypes
+   SYS"ImageDFS_ReadFiletypeMap",type TO ,,,,,filetype
+   SYS "OS_FSControl",18,,filetype TO ,,first,second
+   block%!4=first:block%!8=second:block%?12=13
+   :
+   IF fhand%=0 THEN MOVE gfx_x%,gfx_y%:PRINT$(block%+4) ELSE SYS"Font_Paint",fhand%,$(block%+4),%1<<4,gfx_x%,gfx_y%-24
+   IF colours%=63 AND selectedtypes%?type<>0 THEN SYS"Wimp_SetColour",0 OR %1000000 ELSE SYS"Wimp_SetColour",7 OR %110000
+   IF selectedtypes%?type<>0 THEN RECTANGLE FILL gfx_x%-8,gfx_y%+4,162,-38:SYS"Wimp_SetColour",7
+   gfx_y%-=40
+  NEXT
+ ENDIF
+ :
+ SYS "Wimp_GetRectangle",,block% TO more%
+ENDWHILE
+ENDPROC
+
+
+DEF PROCsettypeextent
+block%!0=0
+block%!8=162
+block%!12=0
+:
+SYS"ImageDFS_ReadFiletypeMap",-1 TO maxtypes
+block%!4=-maxtypes*40-4
+:
+IF (block%!4)>-192 THEN block%!4=-192           :REM minimum size!
+:
+SYS"Wimp_SetExtent",ARCtypes%,block%
+:
+IF FNcheckwindow(ARCtypes%) THEN
+ !block%=ARCtypes%                              :REM reopen window if open, so scroll bars ok
+ SYS"Wimp_GetWindowState",,block%               :REM ...possibly use PROCreopenwindow? not at mo.
+ SYS"Wimp_OpenWindow",,block%
+ENDIF
+ENDPROC
+
+
+DEF PROCkeypress(key%,window%)  :REM icon in block%!4
+CASE window% OF
+ WHEN filetypes% : CASE block%!4 OF
+  WHEN ftype_exec%,ftype_load% : IF key%=13 THEN PROCupdatetype ELSE SYS "Wimp_ProcessKey",key%
+                                 IF block%!4=ftype_exec% THEN PROClosecaret(window%,block%!4)
+ ENDCASE
+ OTHERWISE:SYS "Wimp_ProcessKey",key%
+ENDCASE
+ENDPROC
+
+
+DEF PROCclick(wind%)    :REM icon in block%!16
+CASE wind% OF
+ WHEN -2       : PROCiconbar(block%!8)
+ :
+ WHEN options% : CASE block%!16 OF
+  OTHERWISE : PROCupdateoptions(block%!8,block%!16)
+ ENDCASE
+ :
+ WHEN imagehandling% : PROCihandleclick(block%!8,block%!16)
+ :
+ WHEN filetypes% : CASE block%!8 OF
+  WHEN 2 : PROCdotypehandling(wind%,!block%,block%!4)
+  WHEN 1,4 : CASE block%!16 OF
+   WHEN ftype_use% : SYS "ImageDFS_Options",1<<6,FNcheckon(filetypes%,ftype_use%)
+  ENDCASE
+ ENDCASE
+ :
+ WHEN ARCtypes% : CASE block%!8 OF
+  WHEN 2 : PROCdotypehandling(wind%,!block%,block%!4)
+  WHEN 4 : PROCedittype(FNdecodetype(block%!4)) :REM clear selected list and put this type in
+  WHEN 1 : type=FNdecodetype(block%!4):IF selectedtypes%?type<>0 THEN PROCdeselecttype(type) ELSE PROCselecttype(type):REM add type to selected list
+ ENDCASE
+ :
+ WHEN optwindow% : CASE block%!8 OF
+  WHEN 4 : CASE block%!16 OF
+   WHEN optwd_save% : PROCclosewindow(optwindow%):PROCreadnewoptions:PROCsavedefaults
+   WHEN optwd_cncl% : PROCclosewindow(optwindow%)
+   WHEN optwd_ok%   : PROCclosewindow(optwindow%):PROCreadnewoptions
+  ENDCASE
+  WHEN 1 : CASE block%!16 OF
+   WHEN optwd_save% : PROCreadnewoptions:PROCsavedefaults
+   WHEN optwd_cncl% : PROCclosewindow(optwindow%)
+   WHEN optwd_ok%   : PROCreadnewoptions
+  ENDCASE
+ ENDCASE
+ :
+ WHEN xfer_send%,xfer_pane% : CASE block%!16 OF
+  WHEN xfer_file% : IF block%!8=16 OR block%!8=64 THEN PROCstartsavedrag(wind%)
+ ENDCASE
+ :
+ WHEN driveselect% : PROCdriveselclick(block%!8,block%!16)
+ :
+ WHEN readfloppy% : PROCreadfloppyclick(block%!8,block%!16)
+ENDCASE
+ENDPROC
+
+
+DEF PROCcheckmaxdrives          :REM reads available ADFS floppy drives
+SYS &60242 TO ,maxdrive% ;flags :REM "ADFS_Drives"
+IF (flags AND 1)=0 THEN
+ maxdrive%-=1                    :REM make it go from 0 rather than 1...
+ mindrive%=0
+ELSE
+ REM no ADFS...
+ maxdrive%=0
+ mindrive%=0
+ENDIF
+ENDPROC
+
+
+DEF PROCdragended
+IF currentlydraging%=3 THEN PROCsavedragended ELSE PROCdrivedragended
+ENDPROC
+
+
+DEF PROCiconbar(button%)
+CASE button% OF
+ WHEN 2   : PROCshowmenu(iconbarmenu%,!block%-64,96+ibmenu_len%)
+ WHEN 4   : PROCopenwindow(imagehandling%)
+ WHEN 1   : PROCopenwindow(optwindow%):PROCgaincaret(optwindow%,-1):REM (driveselect%)
+ENDCASE
+ENDPROC
+
+
+DEF PROCshowmenu(menu%,menu_x%,menu_y%)
+menuopen%=menu%
+SYS "Wimp_CreateMenu",,menu%,menu_x%,menu_y%
+ENDPROC
+
+
+DEF FNcreatemenu(menu%,contents$)                    :REM v2.00 with indirected data 29/8/95
+LOCAL counter%,ptr%,tempwidth%,num_of_items%,title$
+:
+contents$=contents$+CHR$0
+counter%=0
+:
+PROCreadstr(contents$,counter%,title$,counter%)
+PROCreadnum(contents$,counter%,num_of_items%,counter%)
+$menu%=title$
+maxwidth%=(LEN(title$)-2)*16
+menu%!12=&00070207            :REM menu colours
+menu%!20=44                   :REM menu entry heights
+menu%!24=0                    :REM menu entry gaps
+ptr%=menu%+28
+menu_len%=0
+:
+FOR items%=1 TO num_of_items%
+ PROCreadnum(contents$,counter%,menu_flags%,counter%)
+ PROCreadnum(contents$,counter%,subptr%,counter%)
+ PROCreadstr(contents$,counter%,item$,counter%)
+ IF LEN(item$)>12 OR (menu_flags% AND 1<<2) THEN
+  REM bit 2 of 'menu_flags%' is writable text bit - so must be indirected!
+  REM (indirection address is still in 'indirectedmenu' on exit from this FN)
+  :
+  DIM indirectedmenu LEN(item$)+1
+  $indirectedmenu=item$
+  :
+  !ptr%=menu_flags%
+  ptr%!4=subptr%
+  ptr%!8=&7000021+(1<<8)
+REM  IF (menu_flags% AND 1<<2) THEN ptr%!8=ptr%!8+(1<<3) :REM if input, centre horizontally
+REM  ********************************* alteration to left-centre text input *** 2/6/96 ***
+  ptr%!12=indirectedmenu
+  ptr%!16=0
+  ptr%!20=LEN(item$)+1 :REM inc terminator
+ ELSE
+  !ptr%=menu_flags%
+  ptr%!4=subptr%
+  ptr%!8=&7000021
+  $(ptr%+12)=item$
+ ENDIF
+ tempwidth%=(LEN(item$)+1)*16
+ IF tempwidth%>maxwidth% THEN maxwidth%=tempwidth%
+ ptr%+=24
+ menu_len%+=44
+NEXT
+:
+menu%!16=maxwidth%
+=menu_len%
+
+
+DEFPROCreadstr(search$,pos%,RETURN search$,RETURN pos%)
+LOCAL oldpos%
+oldpos%=pos%+1
+REPEAT
+ pos%+=1
+UNTIL MID$(search$,pos%,1)="," OR MID$(search$,pos%,1)=CHR$0
+search$=MID$(search$,oldpos%,(pos%-oldpos%))
+ENDPROC
+
+
+DEFPROCreadnum(search$,pos%,RETURN found%,RETURN pos%)
+LOCAL oldpos%
+oldpos%=pos%+1
+REPEAT
+ pos%+=1
+UNTIL MID$(search$,pos%,1)="," OR MID$(search$,pos%,1)=CHR$0
+search$=MID$(search$,oldpos%,(pos%-oldpos%))
+found%=EVAL(search$)
+ENDPROC
+
+
+DEF PROCmenuselect                              :REM see page 98 for menu selecting
+sel1%=!block%:sel2%=block%!4
+sel3%=block%!8:sel4%=block%!12
+:
+SYS "Wimp_GetPointerInfo",,block%
+button%=block%!8
+:
+CASE menuopen% OF
+ WHEN iconbarmenu% : CASE sel1% OF
+  WHEN 0 :                              :REM 0 is usually the 'Info >' entry
+  WHEN 1 : PROCopenwindow(imagehandling%)
+  WHEN 2 : PROCopenwindow(driveselect%)
+  WHEN 3 : PROCopenwindow(filetypes%)
+  WHEN 4 : PROCopenwindow(optwindow%):PROCgaincaret(optwindow%,-1)
+  WHEN 5 : quit%=TRUE : CASE sel2% OF
+   WHEN 0 :
+   WHEN 1 : quittype%=1                 :REM The last one is the 'Quit>Whole program' item
+  ENDCASE
+ ENDCASE
+ WHEN typesmenu% : CASE sel1% OF
+  WHEN 0 : CASE sel2% OF
+   WHEN 0 : PROCrenametype($newtypeaddr%)
+   WHEN 1 : PROCedittype(currenttype%)
+   WHEN 2 : PROCremovetypes:button%=4   :REM removes selected types
+   WHEN 4 : CASE sel3% OF
+    WHEN 0 : PROCmovetype(currenttype%,VAL$newposition%)
+   ENDCASE
+  ENDCASE
+  WHEN 1 : PROCselectalltypes
+  WHEN 2 : PROCdeselectalltypes
+  WHEN 3 : PROCnewtype($newtypeaddr%)
+  WHEN 4 : PROCsavefiletypes
+ ENDCASE
+ENDCASE
+:
+IF button%=1 THEN PROCshowmenu(menuopen%,0,0)
+ENDPROC
+
+
+DEF PROCsetmenu(menu%,item%,state%)
+ptr%=menu%+28
+ptr%=ptr%+24*item%
+IF state% THEN ?ptr%=?ptr% OR 1 ELSE ?ptr%=?ptr% AND %11111110
+ENDPROC
+
+
+DEF PROCtick_on(menu%,item%)
+ptr%=menu%+28
+ptr%=ptr%+24*item%
+?ptr%=?ptr% OR 1
+ENDPROC
+
+
+DEF PROCtick_off(menu%,item%)
+ptr%=menu%+28
+ptr%=ptr%+24*item%
+?ptr%=?ptr% AND %11111110
+ENDPROC
+
+
+DEF PROCshade_on(menu%,item%)
+ptr%=menu%+28
+ptr%=ptr%+24*item%
+ptr%+=10
+?ptr%=?ptr% OR %01000000
+ENDPROC
+
+
+DEF PROCshade_off(menu%,item%)
+ptr%=menu%+28
+ptr%=ptr%+24*item%
+ptr%+=10
+?ptr%=?ptr% AND %10111111
+ENDPROC
+
+
+DEF FNdotted(menu%,item%,len%)
+ptr%=menu%+28
+ptr%=ptr%+24*item%
+?ptr%=?ptr% OR 2
+=len%+24
+
+
+DEF PROCclosewindow(window%)
+CASE window% OF
+ WHEN optwindow%     : PROCclosewindow(options%)
+ WHEN filetypes%     : PROCclosewindow(ARCtypes%)
+ WHEN imagehandling% : PROCclosewindow(xfer_pane%)
+ENDCASE
+:
+!block%=window%
+SYS "Wimp_CloseWindow",,block%
+ENDPROC
+
+
+DEF PROCreopenwindow(window%)           :REM don't alter block% before window opening!!!
+CASE window% OF
+ WHEN optwindow%     : IF optnewmd% THEN SYS "Wimp_OpenWindow",,block%
+                       PROCredrawpane(options%,optpane_x%,optpane_y%,FALSE)
+                       IF optnewmd% THEN PROCcentreoptions:optnewmd%=FALSE
+
+ WHEN filetypes%     : IF typesnewmd% THEN SYS "Wimp_OpenWindow",,block%
+                       PROCredrawpane(ARCtypes%,typespane_x%,typespane_y%,FALSE):typesnewmd%=FALSE
+
+ WHEN imagehandling% : IF xfernewmd% THEN SYS "Wimp_OpenWindow",,block%
+                       PROCredrawpane(xfer_pane%,xferpane_x%,xferpane_y%,FALSE):xfernewmd%=FALSE
+
+ OTHERWISE       : SYS "Wimp_OpenWindow",,block%
+ENDCASE
+ENDPROC
+
+
+DEF PROCredrawpane(pane%,offsetx%,offsety%,topscroll%)
+LOCAL paneblock%
+paneblock%=128+block%
+:
+visminx%=block%!4
+vismaxy%=block%!16
+scrollx%=block%!20
+scrolly%=block%!24
+infront%=block%!28
+block%!28=pane%                         :REM all main window data ready
+:
+paneblock%!0=pane%
+SYS "Wimp_GetWindowState",,paneblock%
+width%=paneblock%!12-paneblock%!4
+height%=paneblock%!16-paneblock%!8
+paneblock%!4=visminx%+offsetx%
+paneblock%!8=vismaxy%+offsety%-height%
+paneblock%!12=visminx%+offsetx%+width%
+paneblock%!16=vismaxy%+offsety%
+IF topscroll% THEN paneblock%!20=0:paneblock%!24=0
+paneblock%!28=infront%                  :REM all pane window data ready...
+:
+SYS "Wimp_OpenWindow",,paneblock%       :REM open pane FIRST!
+SYS "Wimp_OpenWindow",,block%           :REM open main window
+ENDPROC
+
+
+DEF PROCopenwindow(window%)
+LOCAL topscroll%
+topscroll%=FALSE                        :REM DEFAULT open at CURRENT scroll offsets
+:
+CASE window% OF
+ WHEN imagehandling% : IF FNcheckwindow(readfloppy%) THEN PROCopenwindow(readfloppy%):ENDPROC
+                     : IF NOT FNcheckwindow(imagehandling%) THEN PROCsetupihandling
+ WHEN driveselect%   : IF NOT FNcheckwindow(driveselect%) THEN PROCsetupdriveselect
+ WHEN optwindow%     : IF NOT FNcheckwindow(optwindow%) THEN PROCsetoptionicons
+ WHEN filetypes%     : IF NOT FNcheckwindow(filetypes%) THEN PROCsetfiletypes
+ENDCASE
+:
+!block%=window%
+SYS "Wimp_GetWindowState",,block%
+block%!28=-1                            :REM open window at the front (+ works for panes!)
+:
+CASE window% OF
+ WHEN optwindow% : IF NOT FNcheckwindow(options%) THEN topscroll%=TRUE
+                   !block%=window%                              :REM }_ do again because
+                   SYS "Wimp_GetWindowState",,block%            :REM }  block% wiped!
+                   block%!28=-1                                 :REM open pane at front!
+                   PROCredrawpane(options%,optpane_x%,optpane_y%,topscroll%)
+                   PROCcentreoptions                            :REM always check boarder!
+:
+ WHEN filetypes% : IF NOT FNcheckwindow(ARCtypes%) THEN topscroll%=TRUE
+                   !block%=window%                              :REM }_ do again because
+                   SYS "Wimp_GetWindowState",,block%            :REM }  block% wiped!
+                   block%!28=-1                                 :REM open pane at front!
+                   PROCredrawpane(ARCtypes%,typespane_x%,typespane_y%,topscroll%)
+:
+ WHEN imagehandling% : block%!28=-1                             :REM open pane at front!
+                       PROCredrawpane(xfer_pane%,xferpane_x%,xferpane_y%,FALSE)
+:
+ OTHERWISE       : IF topscroll% THEN block%!20=0:block%!24=0
+                   SYS "Wimp_OpenWindow",,block%
+ENDCASE
+ENDPROC
+
+
+DEF PROCreceive
+CASE block%!16 OF
+ WHEN 0      : quit%=TRUE                       :REM message 0 = task manager > quit
+ WHEN 2      : PROCdatasaveack
+ WHEN 3      : REM PROCdataload(block%!40)      :REM message 3 = load data
+ WHEN 4      : PROCdataloadack
+ WHEN &502   : PROChelprequest(block%!32,block%!36)
+ WHEN &400C0 : PROCmenuwarning                  :REM menu warning (new filetype menu only!)
+ WHEN &400C1 : optnewmd%=TRUE:typesnewmd%=TRUE  :REM mode change, ensure boarder is ok & on screen
+               xfernewmd%=TRUE:PROCsettypeextent:REM also set the size of ARCtypes window
+ WHEN &400CC : PROCiconise(block%!20)
+ENDCASE
+ENDPROC
+
+
+DEF PROCiconise(window%)
+title$=""
+CASE window% OF
+ WHEN driveselect%   : title$="Drives"          :REM NR
+ WHEN optwindow%     : title$="Options"         :REM NR
+ WHEN filetypes%     : title$="Filetypes"
+ WHEN imagehandling% : title$="Image files"
+ WHEN readfloppy%    : title$="Make image"      :REM NR
+ENDCASE
+:
+!block%=(36+LENtitle$+1+3) AND NOT %11
+SWAP block%!8,block%!12
+$(block%+28)="idfs"+CHR$0
+IF title$<>"" THEN $(block%+36)=title$
+block%!16=&400CC
+SYS "Wimp_SendMessage",17,block%,block%!4
+ENDPROC
+
+
+DEF PROCdataload(type%)
+pathname$=FNblocktostring(block%+44)
+CASE type% OF
+ WHEN &1000 :                                   :REM file type &1000 is a directory
+ENDCASE
+ENDPROC
+
+
+DEF FNfindindstr(window%,icon%)
+!block%=window%:block%!4=icon%
+SYS "Wimp_GetIconState",,block%
+=block%!28
+
+
+DEF FNfindvalidstr(window%,icon%)
+!block%=window%:block%!4=icon%
+SYS "Wimp_GetIconState",,block%
+=block%!32
+
+
+DEF FNcheckon(window%,icon%)
+block%!0=window%
+block%!4=icon%
+SYS "Wimp_GetIconState",,block%
+flags%=block%!24
+IF flags% AND 1<<21 THEN =TRUE
+=FALSE
+
+
+DEF FNcheckshade(window%,icon%)
+block%!0=window%
+block%!4=icon%
+SYS "Wimp_GetIconState",,block%
+flags%=block%!24
+IF flags% AND 1<<22 THEN =TRUE
+=FALSE
+
+
+DEF PROCseticon(window%,icon%,state%)
+block%!00=window%
+block%!04=icon%
+IF state% THEN block%!08=1<<21 ELSE block%!08=0
+block%!12=1<<21
+SYS "Wimp_SetIconState",,block%
+ENDPROC
+
+
+DEF PROCselecticon(window%,icon%)
+block%!00=window%
+block%!04=icon%
+block%!08=1<<21
+block%!12=1<<21
+SYS "Wimp_SetIconState",,block%
+ENDPROC
+
+
+DEF PROCdeselecticon(window%,icon%)
+block%!00=window%
+block%!04=icon%
+block%!08=0
+block%!12=1<<21
+SYS "Wimp_SetIconState",,block%
+ENDPROC
+
+
+DEF PROCshadeicon(window%,icon%)
+block%!00=window%
+block%!04=icon%
+block%!08=1<<22
+block%!12=1<<22
+SYS "Wimp_SetIconState",,block%
+ENDPROC
+
+
+DEF PROCunshadeicon(window%,icon%)
+block%!00=window%
+block%!04=icon%
+block%!08=0
+block%!12=1<<22
+SYS "Wimp_SetIconState",,block%
+ENDPROC
+
+
+DEF PROCupdateicon(window%,icon%)
+block%!00=window%
+block%!04=icon%
+block%!08=0
+block%!12=0
+SYS "Wimp_SetIconState",,block%
+ENDPROC
+
+
+DEF FNcheckwindow(window%)
+!block%=window%
+SYS "Wimp_GetWindowState",,block%
+IF ((block%!32) AND %1<<16)=(1<<16) THEN =TRUE
+=FALSE
+
+
+DEF PROClosecaret(window%,icon%)
+SYS"Wimp_GetCaretPosition",,block%
+IF !block%=window% AND block%!4=icon% THEN
+ IF FNcheckwindow(window%) THEN SYS"Wimp_SetCaretPosition",-1
+ENDIF
+ENDPROC
+
+
+DEF PROCgaincaret(window%,icon%)
+SYS"Wimp_GetCaretPosition",,block%
+IF !block%<>window% OR block%!4<>icon% THEN
+ IF FNcheckwindow(window%) THEN  SYS"Wimp_SetCaretPosition",window%,icon%,0,0,-1,0
+ENDIF
+ENDPROC
+
+
+DEF FNmoveicon(window%,ichandle%,y%)
+LOCAL minx%,miny%,maxx%,maxy%,height%
+!block%=window%
+block%!4=ichandle%
+SYS "Wimp_GetIconState",,block%
+minx%=block%!(8+0)
+miny%=block%!(8+4)
+maxx%=block%!(8+8)
+maxy%=block%!(8+12)
+height%=maxy%-miny%
+IF miny%<>y% THEN
+ block%!(8+4)=y%
+ block%!(8+12)=y%+height%
+ SYS "Wimp_DeleteIcon",,block%
+ block%!4=window%
+ SYS "Wimp_CreateIcon",,block%+4 TO ichandle%
+ SYS "Wimp_ForceRedraw",window%,minx%,miny%,maxx%,maxy%
+ SYS "Wimp_ForceRedraw",window%,minx%,y%,maxx%,y%+height%
+ENDIF
+=ichandle%
+
+
+DEF FNextendicon(window%,ichandle%,newwidth%)
+LOCAL minx%,miny%,maxx%,maxy%,height%
+!block%=window%
+block%!4=ichandle%
+SYS "Wimp_GetIconState",,block%
+minx%=block%!(8+0)
+miny%=block%!(8+4)
+maxx%=block%!(8+8)
+maxy%=block%!(8+12)
+width%=maxx%-minx%
+IF width%<>newwidth% THEN
+ block%!(8+8)=minx%+newwidth%
+ SYS "Wimp_DeleteIcon",,block%
+ block%!4=window%
+ SYS "Wimp_CreateIcon",,block%+4 TO ichandle%
+ IF newwidth%>width% THEN SYS "Wimp_ForceRedraw",window%,maxx%,miny%,minx%+newwidth%,maxy% ELSE SYS "Wimp_ForceRedraw",window%,minx%+newwidth%,miny%,maxx%,maxy%
+ENDIF
+=ichandle%
+
+
+DEF FNmoveiconx(window%,ichandle%,x%)
+LOCAL minx%,miny%,maxx%,maxy%,width%
+!block%=window%
+block%!4=ichandle%
+SYS "Wimp_GetIconState",,block%
+minx%=block%!(8+0)
+miny%=block%!(8+4)
+maxx%=block%!(8+8)
+maxy%=block%!(8+12)
+width%=maxx%-minx%
+IF minx%<>x% THEN
+ block%!(8+0)=x%
+ block%!(8+8)=x%+width%
+ SYS "Wimp_DeleteIcon",,block%
+ block%!4=window%
+ SYS "Wimp_CreateIcon",,block%+4 TO ichandle%
+ SYS "Wimp_ForceRedraw",window%,minx%,miny%,maxx%,maxy%
+ SYS "Wimp_ForceRedraw",window%,minx%,x%,maxx%,x%+width%
+ENDIF
+=ichandle%
+
+
+DEF FNreadiconx(window%,ichandle%)
+!block%=window%
+block%!4=ichandle%
+SYS "Wimp_GetIconState",,block%
+=block%!(8+0)
+
+
+DEF PROCclosemenus
+SYS "Wimp_CreateMenu",,-1,0,0
+ENDPROC
+
+
+DEF PROCsetoptionicons              : REM set window icons to module options
+LOCAL currentoptions%,detmethod%,singleside%,autotracks%,autocompct%,form62file%
+:
+SYS "ImageDFS_Options",0,0 TO ,,,currentoptions%
+:
+detmethod% =currentoptions% AND %000001
+fastload%  =NOT(((discoptions% AND %000010)>>1)-1)
+single40T% =NOT(((currentoptions% AND %000100)>>2)-1) : REM gives TRUE or FALSE in var
+formcat%   =(currentoptions% AND %110000)>>4
+:
+IF detmethod%=0 PROCseticon(options%,opts_acrn%,TRUE) ELSE  PROCseticon(options%,opts_acrn%,FALSE)
+IF detmethod%=1 PROCseticon(options%,opts_ret0%,TRUE) ELSE  PROCseticon(options%,opts_ret0%,FALSE)
+:
+PROCseticon(options%,opts_fstld%,fastload%)
+PROCseticon(options%,opts_40sng%,single40T%)
+:
+IF formcat%=0 PROCseticon(options%,opts_DD62%,TRUE)  ELSE PROCseticon(options%,opts_DD62%,FALSE)
+IF formcat%=1 PROCseticon(options%,opts_all31%,TRUE) ELSE PROCseticon(options%,opts_all31%,FALSE)
+IF formcat%=2 PROCseticon(options%,opts_all62%,TRUE) ELSE PROCseticon(options%,opts_all62%,FALSE)
+:
+PROCseticon(options%,opts_noicn%,NOT loaddesk%)
+ENDPROC
+
+
+DEF PROCinitchoices                                     :REM sets variable loaddesk%,discoptions%
+file%=OPENIN"<ImageDFS$Dir>.Options.Choices"
+IF file%<>0 THEN
+ CLOSE#file%
+ OSCLI"Load <ImageDFS$Dir>.Options.Choices "+STR$~block%
+ SYS"ImageDFS_Options",,block%!28
+ IF (!block% AND %1<<3)<>0 THEN loaddesk%=FALSE ELSE loaddesk%=TRUE
+ discoptions%=!block%
+ELSE
+ SYS"ImageDFS_Options",,block%!28 TO ,,discoptions%
+ loaddesk%=TRUE
+ENDIF
+ENDPROC
+
+
+DEF PROCsavedefaults
+LOCAL currentoptions%
+SYS "ImageDFS_Options",0,0 TO ,,,currentoptions%
+currentoptions%=currentoptions% AND NOT %1010   :REM clear unused bits
+IF FNcheckon(options%,opts_noicn%) THEN currentoptions%=currentoptions% OR %1<<3 :REM no-desk bit
+IF (discoptions% AND %10)<>0 THEN currentoptions%=currentoptions% OR %1<<1 :REM fast load
+!block%=currentoptions%
+OSCLI"Save <ImageDFS$Dir>.Options.Choices "+STR$~block%+"+4"
+OSCLI"Settype <ImageDFS$Dir>.Options.Choices Data"
+ENDPROC
+
+
+DEF PROCreadnewoptions          : REM set module options to window icons
+LOCAL currentoptions%,flags%,err%
+:
+currentoptions%=0
+discoptions%=discoptions% AND NOT %000010
+IF FNcheckon(options%,opts_acrn%)     THEN currentoptions%=currentoptions% OR %000000
+IF FNcheckon(options%,opts_ret0%)     THEN currentoptions%=currentoptions% OR %000001
+IF FNcheckon(options%,opts_fstld%)    THEN    discoptions%=discoptions%    OR %000010
+IF FNcheckon(options%,opts_40sng%)    THEN currentoptions%=currentoptions% OR %000100
+IF FNcheckon(options%,opts_noicn%)    THEN loaddesk%=FALSE ELSE loaddesk%=TRUE :REM %001000 unused
+IF FNcheckon(options%,opts_all31%)    THEN currentoptions%=currentoptions% OR %010000
+IF FNcheckon(options%,opts_all62%)    THEN currentoptions%=currentoptions% OR %100000
+REM opts_DD62% is default of %00<<4 (hopfully)
+:
+SYS "XImageDFS_Options",%110101,currentoptions% TO err% ;flags%  : REM don't set bit 6 here!
+IF (flags% AND 1)=1 THEN
+ PROCokbox("Problem from Image DFS",FNblocktostring(err%+4)) : REM if error (not possible now?)
+ PROCsetoptionicons                                          : REM re-read opts...
+ENDIF
+ENDPROC
+
+
+DEF PROCupdateoptions(button%,icon%)
+CASE button% OF
+ WHEN 1 : CASE icon% OF
+  WHEN opts_ret0%,opts_acrn%,opts_all31%,opts_all62%,opts_DD62% : PROCselecticon(options%,icon%)
+ ENDCASE
+ENDCASE
+ENDPROC
+
+
+REM Lumps of gunk to Acorn for making no easy way of reading the vertical
+REM scroll bar width - then making it different in hi and low res modes!
+REM
+REM Oh well, this PROC should sort it!
+
+
+DEF PROCcentreoptions                   :REM pane and optwindow MUST be open!
+!block%=options%
+SYS "Wimp_GetWindowOutline",,block%
+optpn_minx%=block%!4
+optpn_maxx%=block%!12
+optpn_miny%=block%!8
+optpn_maxy%=block%!16
+:
+IF optpn_maxx%-optpn_minx%+8*2=optbdr_wd% AND optpn_maxy%-optpn_miny%+8*2=optbdr_ht% THEN ENDPROC
+:
+!block%=optwindow%
+SYS "Wimp_GetWindowOutline",,block%
+optwd_minx%=block%!4
+optwd_maxy%=block%!16
+:
+block%!4=optwd_pane%
+SYS "Wimp_GetIconState",,block%
+SYS "Wimp_DeleteIcon",,block%
+:
+optbdr_wd%=optpn_maxx%-optpn_minx%+8*2
+optbdr_ht%=optpn_maxy%-optpn_miny%+8*2
+optbdr_x% =30+(optctr_x%-optbdr_wd%/2)
+optbdr_y% = 0-(optctr_y%-optbdr_ht%/2)
+optpane_x%=optbdr_x%-30+4*2
+optpane_y%=optbdr_y%-4*2-2                              :REM -2 gets round exclusive coords
+:
+block%!4=optwindow%
+block%!(08+00)=optbdr_x%
+block%!(08+04)=optbdr_y%-optbdr_ht%
+block%!(08+08)=(optbdr_x%+optbdr_wd%) AND NOT %1        :REM ensure always even number
+block%!(08+12)=optbdr_y% AND NOT %1                     :REM so OS doesn't round down!
+SYS "Wimp_CreateIcon",,block%+4 TO optwd_pane%
+:
+!block%=optwindow%
+SYS "Wimp_GetWindowState",,block%
+visminx%=block%!4
+vismaxy%=block%!16
+:
+!block%=options%
+SYS "Wimp_GetWindowState",,block%
+width%=block%!12-block%!4
+height%=block%!16-block%!8
+block%!4=visminx%+optpane_x%
+block%!12=visminx%+optpane_x%+width%
+block%!16=vismaxy%+optpane_y%
+block%!8=vismaxy%+optpane_y%-height%
+SYS "Wimp_OpenWindow",,block%
+ENDPROC
+
+
+
+REM
+REM Create image from floppy routines...
+REM
+
+
+
+DEF PROCreadfloppyclick(button%,icon%)
+CASE button% OF
+ WHEN 4 : CASE icon% OF
+  WHEN readf_cncl%  : PROCclosewindow(readfloppy%) : REM Cancel only clicked if nothing happening
+  WHEN readf_read%  : PROCstartfloppyread                        :REM
+  WHEN readf_ok%    : PROCclosewindow(readfloppy%)               :REM These icons should only be
+  WHEN readf_abrt%  : PROCaborttransfer                          :REM possible to click if it is
+  WHEN readf_pause% : transferpause%=TRUE:PROCreadf_continueicon :REM ok to carry out their PROCs
+  WHEN readf_cntn%  : transferpause%=FALSE:PROCreadf_pauseicon   :REM
+ ENDCASE
+ WHEN 1 : CASE icon% OF
+  WHEN readf_dr0%,readf_dr1%,readf_dr2%,readf_dr3% : PROCselecticon(readfloppy%,icon%)
+  REM  ^^^^ above line disables effects of adjust on radio icons!
+ ENDCASE
+ENDCASE
+ENDPROC
+
+
+DEF PROCsetupreadf              :REM set icons in window ready for opening
+LOCAL drive%
+:
+PROCcheckmaxdrives
+IF maxdrive%<readfloppydrive% THEN readfloppydrive%=maxdrive%
+:
+FOR drive%=0 TO 3
+ IF drive%=readfloppydrive% THEN PROCselecticon(readfloppy%,readf_drive(readfloppydrive%)) ELSE PROCdeselecticon(readfloppy%,readf_drive(drive%))
+ IF drive%>maxdrive% THEN PROCshadeicon(readfloppy%,readf_drive(drive%)) ELSE PROCunshadeicon(readfloppy%,readf_drive(drive%))
+NEXT
+:
+IF FNcheckon(readfloppy%,readf_top%) OR FNcheckon(readfloppy%,readf_botm%) THEN
+ELSE
+ PROCselecticon(readfloppy%,readf_top%)
+ENDIF
+:
+$readftextstr%="Click Read to check size of image"
+PROCreadf_bar(0)
+:
+PROCreadf_cancelicon
+PROCreadf_readicon
+PROCreadf_nookicon
+ENDPROC
+
+
+DEF PROCreadf_bar(bar%)         :REM alter the 'readfloppy%' window's percentage bar to 'bar%'
+readf_bar%=FNextendicon(readfloppy%,readf_bar%,(readf_barmaxlength%/100)*bar%)
+ENDPROC
+
+
+DEF PROCreadf_nookicon          :REM Ok, Cancel, Abort, Read, Pause & Continue icon display PROCs
+readf_ok%=FNmoveicon(readfloppy%,readf_ok%,-412)
+ENDPROC
+
+
+DEF PROCreadf_okonlyicon
+readf_ok%=FNmoveicon(readfloppy%,readf_ok%,-332)
+readf_read%=FNmoveicon(readfloppy%,readf_read%,-420)
+readf_pause%=FNmoveicon(readfloppy%,readf_pause%,-412)
+readf_cntn%=FNmoveicon(readfloppy%,readf_cntn%,-412)
+readf_cncl%=FNmoveicon(readfloppy%,readf_cncl%,-412)
+readf_abrt%=FNmoveicon(readfloppy%,readf_abrt%,-412)
+ENDPROC
+
+
+DEF PROCreadf_cancelicon
+readf_cncl%=FNmoveicon(readfloppy%,readf_cncl%,-332)
+readf_abrt%=FNmoveicon(readfloppy%,readf_abrt%,-412)
+ENDPROC
+
+
+DEF PROCreadf_aborticon
+readf_cncl%=FNmoveicon(readfloppy%,readf_cncl%,-412)
+readf_abrt%=FNmoveicon(readfloppy%,readf_abrt%,-332)
+ENDPROC
+
+
+DEF PROCreadf_readicon
+readf_read%=FNmoveicon(readfloppy%,readf_read%,-340)
+readf_pause%=FNmoveicon(readfloppy%,readf_pause%,-412)
+readf_cntn%=FNmoveicon(readfloppy%,readf_cntn%,-412)
+ENDPROC
+
+
+DEF PROCreadf_pauseicon
+readf_read%=FNmoveicon(readfloppy%,readf_read%,-420)
+readf_pause%=FNmoveicon(readfloppy%,readf_pause%,-332)
+readf_cntn%=FNmoveicon(readfloppy%,readf_cntn%,-412)
+ENDPROC
+
+
+DEF PROCreadf_continueicon
+readf_read%=FNmoveicon(readfloppy%,readf_read%,-420)
+readf_pause%=FNmoveicon(readfloppy%,readf_pause%,-412)
+readf_cntn%=FNmoveicon(readfloppy%,readf_cntn%,-332)
+ENDPROC
+
+
+DEF PROCstartfloppyread         :REM 'Read' clicked: examine floppy, and report size & save box
+LOCAL discrecord,testbuffer,drive%,side0%,side2%,flags,oldretries%
+:
+IF FNcheckon(readfloppy%,readf_top%) OR FNcheckon(readfloppy%,readf_botm%) THEN ELSE PROCokbox("Warning from Image DFS","You must select at least one side of the disc to read before continuing."):ENDPROC
+:
+IF FNcheckon(readfloppy%,readf_top%) THEN
+ readingside%=0
+ IF FNcheckon(readfloppy%,readf_botm%) THEN readingside%=1 :REM 1 for both!!!
+ELSE
+ readingside%=2
+ENDIF
+:
+FOR drive%=0 TO 3
+ IF FNcheckon(readfloppy%,readf_drive(drive%)) THEN readfloppydrive%=drive%
+NEXT
+:
+DIM discrecord 64, testbuffer 512
+$discrecord=STRING$(63,CHR$0)
+$testrecord=STRING$(63,CHR$0)
+SYS &60245,":"+STR$readfloppydrive%,discrecord TO ;flags :REM "XADFS_DescribeDisc"
+:
+side0%=0:side2%=0
+IF (flags AND 1)=0 THEN
+ IF discrecord!32=&B22 THEN side0%=TRUE
+ENDIF
+:
+testrecord?0=8
+testrecord?1=10
+testrecord?2=1
+testrecord?3=1
+testrecord?8=%01000000
+testrecord!16=80*256*10*2
+SYS &60244,&0000FF00,0 TO ,,oldretries% ;flags :REM "XADFS_Retries"
+SYS &60240,,(testrecord<<6) OR 1,(readfloppydrive%<<29) OR 80*256*10*1,testbuffer,512 TO ;flags :REM "XADFS_DiscOp"
+IF (flags AND 1)=1 THEN
+ testrecord?1=18
+ testrecord?3=2
+ testrecord!16=80*256*18*2
+ SYS &60240,,(testrecord<<6) OR 1,(readfloppydrive%<<29) OR 80*256*18*1,testbuffer,512 TO ;flags :REM "XADFS_DiscOp"
+ IF (flags AND 1)=0 THEN side2%=2
+ELSE
+ side2%=1
+ENDIF
+SYS &60244,&0000FF00,oldretries% ;flags :REM "XADFS_Retries"
+:
+IF side2%=0 AND NOT side0% THEN PROCokbox("Error from Image DFS","The disc in drive "+STR$readfloppydrive%+" is not a DFS disc, cannot create image."):ENDPROC
+:
+IF readingside%>0 AND side2%=0 THEN PROCokbox("Error from Image DFS","Side 2 of the disc in drive "+STR$readfloppydrive%+" is not formatted as DFS so cannot create image, try again with only side 0 selected."):ENDPROC
+:
+IF readingside%<2 AND NOT side0% THEN PROCokbox("Error from Image DFS","Side 0 of the disc in drive "+STR$readfloppydrive%+" is not formatted as DFS so cannot create image, try again with only side 2 selected."):ENDPROC
+:
+IF readingside%=1 THEN
+ IF testrecord?3<>discrecord?3 THEN PROCokbox("Error from Image DFS","Sides 0 and 2 of the disc in drive "+STR$readfloppydrive%+" have different densities, cannot create a double sided image, try again with only one side selected."):ENDPROC
+ IF discrecord!16=300*1024 OR discrecord!16=540*1024 THEN
+  PROCokbox("Error from Image DFS","Sides 0 and 2 of the disc in drive "+STR$readfloppydrive%+" have different numbers of tracks, cannot create a double sided image, try again with only one side selected."):ENDPROC
+ ENDIF
+ENDIF
+:
+IF readingside%=1 THEN
+ sizeofdisc%=discrecord!16
+ELSE
+ IF readingside%=0 THEN SYS &60240,,1,(readfloppydrive%<<29),testbuffer,512 TO ;flags :REM "XADFS_DiscOp"
+ REM IF (flags AND 1)=1 THEN ERROR 255,"Read fault, program error - contact WSS" - no need!
+ sizeofdisc%=testbuffer?(256+7)
+ sizeofdisc%=sizeofdisc% OR ((testbuffer?(256+6) AND %1111)<<8)
+ sizeofdisc%=sizeofdisc%*256
+ENDIF
+:
+$readftextstr%="Output will be a "+STR$(sizeofdisc%/1024)+"K image file"
+PROCupdateicon(readfloppy%,readf_text%)
+:
+$xfer_sendstr%="ImageFile"
+SYS "Wimp_GetPointerInfo",,block%
+PROCshowmenu(xfer_send%,(block%!0)-64,block%!4)
+ENDPROC
+
+
+DEF PROCstartsavedrag(window%)
+LOCAL minx%,miny%,maxx%,maxy%
+:
+block%!0=window%
+block%!4=xfer_file%
+SYS "Wimp_GetIconState",,block%
+minx%=block%!8
+miny%=block%!12
+maxx%=block%!16
+maxy%=block%!20
+:
+SYS "Wimp_GetWindowState",,block%
+block%!20=block%!4+minx%
+block%!24=block%!16+miny%
+block%!28=block%!4+maxx%
+block%!32=block%!16+maxy%
+:
+SYS "DragASprite_Start",%11000101,1,"file_b22",block%+20
+currentlydraging%=xfer_file%
+savingfrom%=window%
+ENDPROC
+
+
+DEF PROCsavedragended
+LOCAL leaf$,destx%,desty%,destwind%,desticon%
+SYS "DragASprite_Stop"
+currentlydraging%=0
+:
+IF savingfrom%=xfer_send% THEN leaf$=FNgetleaf(xfer_sendstr%) ELSE leaf$=FNgetleaf(xfer_panestr%)
+SYS "Wimp_GetPointerInfo",,block%
+destx%=!block%
+desty%=block%!4
+destwind%=block%!12
+desticon%=block%!16
+:
+!block%=(44+LENleaf$+4) AND NOT %11
+block%!4=0
+block%!8=0
+block%!12=0             :REM orignal (not reply)
+block%!16=1             :REM DataSave
+block%!20=destwind%
+block%!24=desticon%
+block%!28=destx%
+block%!32=desty%
+block%!36=sizeofdisc%
+block%!40=&B22
+$(block%+44)=leaf$
+SYS "Wimp_SendMessage",18,block%,destwind% TO ,,desthand%
+ENDPROC
+
+
+DEF PROCdatasaveack
+LOCAL my_ref%,his_ref%,filename$
+my_ref%=block%!8
+his_ref%=block%!12
+filename$=FNblocktostring(block%+44)
+:
+IF savingfrom%=xfer_send% THEN $xfer_sendstr%=filename$ ELSE $xfer_panestr%=filename$
+PROCupdateicon(savingfrom%,xfer_text%)
+PROCclosemenus
+:
+IF savingfrom%=xfer_pane% THEN PROCcreateblank(filename$)
+IF savingfrom%=xfer_send% THEN PROCmaketransferfile(filename$)
+:
+!block%=(44+LENfilename$+4) AND NOT %11
+block%!4=0
+block%!8=his_ref%
+block%!12=my_ref%       :REM orignal (not reply)
+block%!16=3             :REM DataLoad
+:
+: REM the rest of block is still there from when this PROC is called
+:
+SYS "Wimp_SendMessage",18,block%,desthand%
+ENDPROC
+
+
+DEF PROCdataloadack
+savingfrom%=FALSE
+ENDPROC
+
+
+DEF FNblocktostring(addr%)
+LOCAL string$
+REPEAT
+string$+=CHR$(?addr%)
+addr%+=1
+UNTIL ?addr%<32
+=string$
+
+
+DEF FNgetleaf(addr%)
+LOCAL dotpos%,lastdot%
+dotpos%=0                               :REM has to start at 0, incase no '.' found...
+REPEAT
+ lastdot%=INSTR($addr%,".",dotpos%+1)   :REM (+1) to get past last dot!
+ IF lastdot%<>0 THEN dotpos%=lastdot%
+UNTIL lastdot%=0
+=RIGHT$($addr%,LEN$addr%-dotpos%)+CHR$0
+
+
+DEF PROCmaketransferfile(filename$)
+LOCAL leaf%,test%
+DIM leaf% 256
+$leaf%=filename$
+test%=OPENIN(filename$)
+IF test%>0 THEN
+ CLOSE#test%
+ $leaf%=FNgetleaf(leaf%)
+ IF FNokcancelbox("Query from Image DFS","File with name '"+LEFT$($leaf%,LEN$leaf%-1)+"' already exists, delete this file and continue?")=2 THEN ENDPROC
+ OSCLI"Delete "+filename$
+ENDIF
+:
+OSCLI"Create "+filename$+" "+STR$~sizeofdisc%
+PROCstarttransfer(filename$)
+ENDPROC
+
+
+DEF PROCstarttransfer(filename$)
+savetransfer%=TRUE
+transferpause%=FALSE
+transfername$=filename$
+transferfile%=OPENOUT(transfername$)
+IF readingside%<2 THEN transferlock%=OPENIN("ADFS::"+STR$readfloppydrive%) ELSE transferlock%=0
+transfered%=0
+:
+$readftextstr%="Transfering image file from disc"
+PROCupdateicon(readfloppy%,readf_text%)
+PROCreadf_aborticon
+PROCreadf_pauseicon
+ENDPROC
+
+
+DEF PROCtransfertrack
+LOCAL thistime%,err%,flags,lasttrans%,density%,secs%
+:
+IF transferpause% THEN ENDPROC
+thistime%=10*256
+:
+IF readingside%<2 THEN
+ transfered%+=thistime%
+ IF transfered%>sizeofdisc% THEN
+  transfered%-=thistime%
+  thistime%=sizeofdisc%-transfered%
+  transfered%+=thistime%
+  savetransfer%=FALSE
+ ENDIF
+ SYS"XOS_GBPB",4,transferlock%,transbuf,thistime% TO err% ;flags
+ IF (flags AND 1)=1 THEN
+  IF FNokcancelbox("Problem from Image DFS",FNblocktostring(err%+4)+" while creating image, continue (may leave corrupt files in image)?")=2 THEN PROCaborttransfer:ENDPROC
+ ENDIF
+ SYS"XOS_GBPB",2,transferfile%,transbuf,thistime% TO err% ;flags
+ IF (flags AND 1)=1 THEN PROCokbox("Error from Image DFS",FNblocktostring(err%+4)+" while saving image data, cannot continue."):PROCaborttransfer:ENDPROC
+ELSE
+ lasttrans%=transfered%
+ transfered%+=thistime%
+ IF transfered%>sizeofdisc% THEN
+  transfered%-=thistime%
+  thistime%=sizeofdisc%-transfered%
+  transfered%+=thistime%
+  savetransfer%=FALSE
+ ENDIF
+ density%=testrecord?3
+ IF density%=2 THEN secs%=18 ELSE secs%=10
+ SYS &60240,,(testrecord<<6) OR 1,(readfloppydrive%<<29) OR (80*256*secs%*1+lasttrans%),transbuf,thistime% TO err% ;flags :REM "XADFS_DiscOp"
+ IF (flags AND 1)=1 THEN
+  IF FNokcancelbox("Problem from Image DFS",FNblocktostring(err%+4)+" while creating image, continue (may leave corrupt files in image)?")=2 THEN PROCaborttransfer:ENDPROC
+ ENDIF
+ SYS"XOS_GBPB",2,transferfile%,transbuf,thistime% TO err% ;flags
+ IF (flags AND 1)=1 THEN PROCokbox("Error from Image DFS",FNblocktostring(err%+4)+" while saving image data, cannot continue."):PROCaborttransfer:ENDPROC
+ENDIF
+:
+PROCreadf_bar((transfered%/sizeofdisc%)*100)
+:
+IF savetransfer%=FALSE THEN
+ CLOSE#transferfile%
+ IF transferlock%>0 THEN CLOSE#transferlock%
+ OSCLI"Settype "+transfername$+" B22"
+ $readftextstr%="Image file created, transfer complete"
+ PROCupdateicon(readfloppy%,readf_text%)
+ PROCreadf_okonlyicon
+ENDIF
+ENDPROC
+
+
+DEF PROCaborttransfer
+savetransfer%=FALSE
+CLOSE#transferfile%
+IF transferlock%>0 THEN CLOSE#transferlock%
+OSCLI"Delete "+transfername$
+$readftextstr%="Transfer aborted"
+PROCupdateicon(readfloppy%,readf_text%)
+PROCreadf_okonlyicon
+ENDPROC
+
+
+REM
+REM image handling stuff...
+REM
+
+
+DEF PROCihandleclick(button%,icon%)
+CASE button% OF
+ WHEN 1,4 : CASE icon% OF
+  WHEN readdiscicon% : IF NOT FNcheckwindow(readfloppy%) THEN PROCsetupreadf
+                     : PROCopenwindow(readfloppy%):PROCclosewindow(imagehandling%)
+  :
+  WHEN image_sd%,image_dd%,image_40t%,image_80t%,image_31f%,image_62f% : PROCselecticon(imagehandling%,icon%) : PROCupdateihandling : REM update options & stop adjust!
+  :
+  WHEN image_ds% : PROCupdateihandling
+ ENDCASE
+ENDCASE
+ENDPROC
+
+
+DEF PROCsetupihandling
+IF FNcheckon(imagehandling%,image_sd%) OR FNcheckon(imagehandling%,image_dd%) THEN ELSE PROCselecticon(imagehandling%,image_dd%)
+IF FNcheckon(imagehandling%,image_40t%) OR FNcheckon(imagehandling%,image_80t%) THEN ELSE PROCselecticon(imagehandling%,image_80t%)
+IF FNcheckon(imagehandling%,image_31f%) OR FNcheckon(imagehandling%,image_62f%) THEN ELSE PROCselecticon(imagehandling%,image_62f%)
+:
+$xfer_panestr%="BlankImage"
+:
+PROCupdateihandling
+ENDPROC
+
+
+DEF PROCupdateihandling
+LOCAL density%,secs%,sides%,tracks%,cat%,newdtl1$,newdtl2$
+IF FNcheckon(imagehandling%,image_sd%) THEN density%=1:secs%=10 ELSE density%=2:secs%=18
+IF FNcheckon(imagehandling%,image_ds%) THEN sides%=2 ELSE sides%=1
+IF FNcheckon(imagehandling%,image_40t%) THEN tracks%=40 ELSE tracks%=80
+IF FNcheckon(imagehandling%,image_31f%) THEN cat%=31 ELSE cat%=62
+:
+IF savetransfer% THEN ERROR 255,"Technical problem! This should not occur..."
+:
+sizeofdisc%=secs%*256*tracks%*sides%
+$imagesizestr%=STR$(sizeofdisc%/1024)
+PROCupdateicon(imagehandling%,image_size%)
+:
+IF density%=1 THEN newdtl1$="Single density, " ELSE newdtl1$="Double density, "
+IF sides%=1 THEN newdtl1$=newdtl1$+"single sided," ELSE newdtl1$=newdtl1$+"double sided,"
+newdtl2$=STR$cat%+" file catalogue, "+STR$tracks%+" tracks."
+IF newdtl1$<>$imagedtl1str% $imagedtl1str%=newdtl1$:PROCupdateicon(imagehandling%,image_dtl1%)
+IF newdtl2$<>$imagedtl2str% $imagedtl2str%=newdtl2$:PROCupdateicon(imagehandling%,image_dtl2%)
+ENDPROC
+
+
+DEF PROCcreateblank(filename$)          :REM sizeofdisc% **should** be correct here...
+LOCAL leaf%,test%,file%
+DIM leaf% 256
+$leaf%=filename$
+test%=OPENIN(filename$)
+IF test%>0 THEN
+ CLOSE#test%
+ $leaf%=FNgetleaf(leaf%)
+ IF FNokcancelbox("Query from Image DFS","File with name '"+LEFT$($leaf%,LEN$leaf%-1)+"' already exists, delete this file and continue?")=2 THEN ENDPROC
+ OSCLI"Delete "+filename$
+ENDIF
+:
+OSCLI"Create "+filename$+" "+STR$~sizeofdisc%
+:
+file%=OPENOUT(filename$)
+A%=file%
+B%=transbuf
+C%=sizeofdisc%
+CALL formatimage
+:
+PROCcreatecat(file%)   :REM ****** this IS reqd in final version, so 31/62 cat optns are ok
+:
+CLOSE#file%
+:
+OSCLI"Settype "+filename$+" B22"
+ENDPROC
+
+
+DEF PROCcreatecat(file%)
+LOCAL title$,secs%
+$transbuf=STRING$(250,CHR$0)
+$(transbuf+250)=STRING$(250,CHR$0)
+$(transbuf+500)=STRING$(250,CHR$0)
+$(transbuf+750)=STRING$(250,CHR$0)
+$(transbuf+1000)=STRING$(24,CHR$0)
+:
+title$=MID$(TIME$,17,2)+"_"+MID$(TIME$,20,2)+"_"+LEFT$(TIME$,3)+STRING$(8,CHR$0)
+:
+$(transbuf+1024)=title$
+transbuf!0=transbuf!1024
+transbuf!4=transbuf!1028
+transbuf!256=transbuf!1032
+:
+IF FNcheckon(imagehandling%,image_sd%) THEN secs%=10 ELSE secs%=18
+IF FNcheckon(imagehandling%,image_40t%) THEN secs%=secs%*40 ELSE secs%=secs%*80
+transbuf?(256+7)=secs% AND &FF
+transbuf?(256+6)=secs%>>8
+transbuf?(256+7+512)=secs% AND &FF
+transbuf?(256+6+512)=secs%>>8           :REM incase 62 file catalogue!
+:
+SYS "OS_GBPB",1,file%,transbuf,512,0
+IF FNcheckon(imagehandling%,image_62f%) THEN
+ transbuf!512=&AAAAAAAA:transbuf!516=&AAAAAAAA
+ SYS "OS_GBPB",1,file%,transbuf+512,512,512
+ENDIF
+:
+IF FNcheckon(imagehandling%,image_ds%) THEN
+ SYS "OS_GBPB",1,file%,transbuf,512,0+secs%*256
+ IF FNcheckon(imagehandling%,image_62f%) THEN
+  SYS "OS_GBPB",1,file%,transbuf+512,512,512+secs%*256
+ ENDIF
+ENDIF
+ENDPROC
+
+
+REM
+REM assembler stuff...
+REM
+
+
+DEF PROCassmformat
+LOCAL codelen%,code%
+:
+codelen%=4096
+DIM code% codelen%
+FOR opt%=8 TO 10 STEP 2
+P%=code%:L%=code%+codelen%
+[OPT opt%
+.formatimage            ;R0=file handle, R1=buffer (10*256 bytes long), R2=length
+STMFD   R13!,{R0-R12,R14}
+MOV     R3,#&E5
+ORR     R3,R3,R3,LSL#8
+ORR     R3,R3,R3,LSL#16
+MOV     R4,R3
+MOV     R5,R3
+MOV     R6,R3
+MOV     R7,R3
+MOV     R8,R3
+MOV     R9,R3
+MOV     R10,R3
+:
+MOV     R11,R1
+MOV     R12,#10*2
+.clearbuffer
+STMIA   R11!,{R3-R10}   ;32 bytes
+STMIA   R11!,{R3-R10}   ;64 bytes
+STMIA   R11!,{R3-R10}   ;96 bytes
+STMIA   R11!,{R3-R10}   ;128 bytes
+SUBS    R12,R12,#1
+BNE     clearbuffer
+:
+MOV     R10,R2
+MOV     R11,R1
+:
+MOV     R1,R0
+MOV     R0,#2
+.fillfileloop
+MOV     R3,#256*10
+MOV     R2,R11
+SWI     "OS_GBPB"
+SUBS    R10,R10,#256*10
+BGT     fillfileloop
+LDMFD   R13!,{R0-R12,PC}
+]
+NEXT
+ENDPROC
+
+
+REM
+REM drive select window...
+REM
+
+
+DEF PROCdriveselclick(button%,icon%)
+CASE button% OF
+ WHEN 16,64 : CASE icon% OF
+  WHEN drsel_dr0%,drsel_dr1%,drsel_dr2%,drsel_dr3% : PROCdragdrives(block%!16)
+ ENDCASE
+ :
+ WHEN 4,1 : CASE icon% OF
+  WHEN drsel_ok%   : PROCreadnewdrivemap:PROCclosewindow(driveselect%)
+  WHEN drsel_cncl% : PROCclosewindow(driveselect%):PROCresetolddrives
+  WHEN drsel_save% : PROCreadnewdrivemap:PROCsavedrivemap:PROCclosewindow(driveselect%)
+ ENDCASE
+ENDCASE
+ENDPROC
+
+
+DEF PROCsetupdriveselect        :REM called when window opened
+LOCAL drive%
+PROCcheckmaxdrives
+IF maxdrive%=0 THEN SYS"ImageDFS_MapDFSToADFSDrive",0,0:SYS"ImageDFS_MapDFSToADFSDrive",1,1
+PROCmapdriveicons       : REM moves the ADFS icons to above the correct DFS icons (uses module)
+SYS"ImageDFS_DFSToADFSDrive",0 TO canceldfs0
+SYS"ImageDFS_DFSToADFSDrive",1 TO canceldfs1
+:
+FOR drive%=0 TO 3
+ IF drive%>maxdrive% THEN PROCshadeicon(driveselect%,drsel_drive(drive%)) ELSE PROCunshadeicon(driveselect%,drsel_drive(drive%))
+NEXT
+ENDPROC
+
+
+DEF PROCresetolddrives
+SYS"ImageDFS_MapDFSToADFSDrive",0,canceldfs0
+SYS"ImageDFS_MapDFSToADFSDrive",1,canceldfs1
+ENDPROC
+
+
+DEF PROCmapdriveicons
+LOCAL unmapped2,unmapped3,temp%,dfsdrive0,dfsdrive1
+REM unmapped2 & 3 are worked out to be the ADFS drives which aren't mapped
+:
+SYS"ImageDFS_DFSToADFSDrive",0 TO dfsdrive0:SYS"ImageDFS_DFSToADFSDrive",1 TO dfsdrive1
+IF dfsdrive0=dfsdrive1 THEN dfsdrive1=(dfsdrive1+1) AND %11
+unmapped2=-1:REPEAT:unmapped2+=1:UNTIL unmapped2<>dfsdrive0 AND unmapped2<>dfsdrive1
+unmapped3=-1:REPEAT:unmapped3+=1:UNTIL unmapped3<>dfsdrive0 AND unmapped3<>dfsdrive1 AND unmapped3<>unmapped2
+:
+temp%=FNmoveiconx(driveselect%,drsel_drive(dfsdrive0),drsel_maptodfsx(0))
+temp%=FNmoveiconx(driveselect%,drsel_drive(dfsdrive1),drsel_maptodfsx(1))
+temp%=FNmoveiconx(driveselect%,drsel_drive(unmapped2),drsel_maptodfsx(2)) :REM assume same icon
+temp%=FNmoveiconx(driveselect%,drsel_drive(unmapped3),drsel_maptodfsx(3)) :REM number after move!
+ENDPROC
+
+
+DEF PROCdragdrives(driveicon%)
+LOCAL minx%,miny%,maxx%,maxy%,drivename$
+:
+block%!0=driveselect%
+block%!4=driveicon%
+SYS "Wimp_GetIconState",,block%
+minx%=block%!8
+miny%=block%!12+36
+maxx%=block%!16
+maxy%=block%!20
+:
+SYS "Wimp_GetWindowState",,block%
+block%!20=block%!4+minx%
+block%!24=block%!16+miny%
+block%!28=block%!4+maxx%
+block%!32=block%!16+maxy%
+:
+IF driveicon%=drsel_bg0% OR driveicon%=drsel_bg1% THEN drivename$="bigfloppy" ELSE drivename$="floppydisc" : REM never 'bigfloppy' any more!
+SYS "DragASprite_Start",%10010101,1,drivename$,block%+20
+:
+currentlydraging%=driveicon%
+ENDPROC
+
+
+DEF PROCdrivedragended
+LOCAL origin%,desticon%
+origin%=currentlydraging%
+IF currentlydraging%>0 THEN SYS "DragASprite_Stop"
+currentlydraging%=0
+:
+SYS "Wimp_GetPointerInfo",,block%
+desticon%=block%!16
+:
+IF desticon%=drsel_bg0% THEN SYS"ImageDFS_DFSToADFSDrive",0 TO dfsdrive0:desticon%=drsel_drive(dfsdrive0) :REM adfs drive icon mapped to dfs drive 0
+IF desticon%=drsel_bg1% THEN SYS"ImageDFS_DFSToADFSDrive",1 TO dfsdrive1:desticon%=drsel_drive(dfsdrive1) :REM adfs drive icon mapped to dfs drive 1
+:
+IF origin%=desticon% THEN ENDPROC
+:
+CASE desticon% OF
+ WHEN drsel_dr0%,drsel_dr1%,drsel_dr2%,drsel_dr3% : PROCswapicons(driveselect%,origin%,desticon%)
+ENDCASE
+:
+PROCreadnewdrivemap
+ENDPROC
+
+
+DEF PROCswapicons(window%,ic1%,ic2%)
+LOCAL minx%,miny%,maxx%,maxy%
+!block%=window%
+block%!4=ic1%
+SYS "Wimp_GetIconState",,block%
+minx%=block%!(8+0)
+miny%=block%!(8+4)
+maxx%=block%!(8+8)
+maxy%=block%!(8+12)
+:
+!block%=window%
+block%!4=ic2%
+SYS "Wimp_GetIconState",,block%
+SWAP block%!(8+0),minx%
+SWAP block%!(8+4),miny%
+SWAP block%!(8+8),maxx%
+SWAP block%!(8+12),maxy%
+SYS "Wimp_DeleteIcon",,block%
+block%!4=window%
+SYS "Wimp_CreateIcon",,block%+4 TO ic2%
+SYS "Wimp_ForceRedraw",window%,minx%,miny%,maxx%,maxy%  : REM force redraw of dest icon
+:
+!block%=window%
+block%!4=ic1%
+SYS "Wimp_GetIconState",,block%
+SWAP block%!(8+0),minx%
+SWAP block%!(8+4),miny%
+SWAP block%!(8+8),maxx%
+SWAP block%!(8+12),maxy%
+SYS "Wimp_DeleteIcon",,block%
+block%!4=window%
+SYS "Wimp_CreateIcon",,block%+4 TO ic1%
+SYS "Wimp_ForceRedraw",window%,minx%,miny%,maxx%,maxy%  : REM force redraw of origin icon
+:                                                       : REM - now given by minx's etc.
+ENDPROC
+
+
+DEF PROCreadnewdrivemap
+LOCAL drive%
+:
+FOR drive%=0 TO 3
+ IF FNreadiconx(driveselect%,drsel_drive(drive%))=drsel_maptodfsx(0) THEN SYS"ImageDFS_MapDFSToADFSDrive",0,drive%
+ IF FNreadiconx(driveselect%,drsel_drive(drive%))=drsel_maptodfsx(1) THEN SYS"ImageDFS_MapDFSToADFSDrive",1,drive%
+NEXT
+ENDPROC
+
+
+DEF PROCsavedrivemap
+SYS"ImageDFS_DFSToADFSDrive",0 TO ?block%
+SYS"ImageDFS_DFSToADFSDrive",1 TO block%?1
+OSCLI"Save <ImageDFS$Dir>.Options.DriveMap "+STR$~block%+"+2"
+OSCLI"Settype <ImageDFS$Dir>.Options.DriveMap Data"
+ENDPROC
+
+
+REM
+REM filetypes window...
+REM
+
+
+DEF PROCsetfiletypes
+LOCAL currentoptions%,usetypes%
+SYS "ImageDFS_Options" TO ,,,currentoptions%
+usetypes%=NOT(((currentoptions% AND %1000000)>>6)-1)
+PROCseticon(filetypes%,ftype_use%,usetypes%)
+ENDPROC
+
+
+DEF PROCdotypehandling(wind%,click_x%,click_y%)
+LOCAL filetype,filetype$,char,change,menu$
+IF wind%=ARCtypes% THEN currenttype%=FNdecodetype(click_y%) ELSE currenttype%=FALSE
+IF currenttype%<>0 AND numselected%<=1 THEN PROCdeselectalltypes:PROCselecttype(currenttype%)
+REM ^^ menu over a type selects it only if 1 or 0 types currently selected... (flicker cause ^^)
+:
+IF currenttype%=FALSE AND numselected%=1 THEN currenttype%=FNfindselected(0)
+REM ^^ if menu over main window, use selection list to find which type is selected
+:
+IF numselected%>1 THEN menu$="Selection" ELSE menu$="Type '"+FNreadtype(currenttype%)+"'"
+temp%=FNcreatemenu(typesmenu%,"Filetypes,5,0,typeeditmenu%,"+menu$+",0,0,Select all,0,0,Clear selection,%1<<3,newtypemenu%,New filetype,&80,0,Save filetypes")
+:
+IF numselected%>1 THEN
+ PROCshade_on(typeeditmenu%,0)
+ PROCshade_on(typeeditmenu%,1)
+ PROCshade_on(typeeditmenu%,3)
+ PROCshade_on(typeeditmenu%,4)
+ELSE
+ PROCshade_off(typeeditmenu%,0)
+ PROCshade_off(typeeditmenu%,1)
+ PROCshade_off(typeeditmenu%,3)
+ PROCshade_off(typeeditmenu%,4)
+ENDIF
+:
+IF currenttype%=FALSE AND numselected%=0 THEN
+ PROCshade_on(typesmenu%,0) : REM can't find a type, even in the selected list...
+ELSE
+ SYS "ImageDFS_ReadFiletypeMap",currenttype% TO ,loadmask,loadaddr,execmask,execaddr,filetype
+ filetype$=RIGHT$("000"+STR$~filetype,3)
+ FOR change=1 TO LENfiletype$
+  char=ASC(MID$(filetype$,change,1))
+  IF char<=90 AND char>=65 THEN char+=32:MID$(filetype$,change,1)=CHR$char
+ NEXT
+ :
+ $typei_typestr%=FNreadtype(currenttype%)+" ("+filetype$+")"
+ $typei_numstr%=STR$currenttype%
+ $typei_sprdata%="file_"+filetype$
+ :
+ loadstr$=RIGHT$("000000"+STR$~loadmask,6)
+ loadaddr$=RIGHT$("000000"+STR$~loadaddr,6)
+ execstr$=RIGHT$("000000"+STR$~execmask,6)
+ execaddr$=RIGHT$("000000"+STR$~execaddr,6)
+ FOR change=1 TO LENloadstr$
+  IF MID$(loadstr$,change,1)<>"F" THEN MID$(loadstr$,change,1)="x" ELSE MID$(loadstr$,change,1)=MID$(loadaddr$,change,1)
+  IF MID$(execstr$,change,1)<>"F" THEN MID$(execstr$,change,1)="x" ELSE MID$(execstr$,change,1)=MID$(execaddr$,change,1)
+ NEXT
+ $typei_loadstr%=loadstr$
+ $typei_execstr%=execstr$
+ :
+ $newposition%=STR$currenttype%
+ENDIF
+:
+IF numselected%=0 THEN PROCshade_on(typesmenu%,2)
+temp%=FNdotted(typesmenu%,3,temp%)
+:
+$newtypeaddr%=""
+PROCshowmenu(typesmenu%,click_x%-64,click_y%)
+ENDPROC
+
+
+DEF FNdecodetype(click_y%)      :REM returns type clicked on or 0
+block%!0=ARCtypes%
+SYS "Wimp_GetWindowState",,block%
+maxy=block%!16
+scrolly=block%!24
+click_y%=maxy-click_y%  :REM os co-ord of top - os co-ord of click = difference
+click_y%-=scrolly       :REM -scroll (which is usually -ve) gets click offset from top work area
+:
+typeclick=click_y%-8
+typeclick=typeclick DIV 40
+typeclick+=1
+:
+SYS "ImageDFS_ReadFiletypeMap",-1 TO maxtypes
+IF typeclick>maxtypes THEN =FALSE
+=typeclick
+
+
+DEF FNreadtype(type)            :REM returns text filetype of entry number or "" if entry 0
+IF type=FALSE THEN =""
+SYS "ImageDFS_ReadFiletypeMap",type TO ,,,,,filetype
+SYS "OS_FSControl",18,,filetype TO ,,first,second
+block%!4=first:block%!8=second:block%?12=13
+type$=$(block%+4)
+:
+REPEAT
+ IF RIGHT$(type$,1)=" " THEN type$=LEFT$(type$,LENtype$-1)
+UNTIL RIGHT$(type$,1)<>" "
+=type$
+
+
+DEF PROCedittype(type)          :REM edits given entry, or exits if entry 0
+editingtype%=type
+IF type=FALSE THEN
+ $ftypestr%="No type"
+ PROCupdateicon(filetypes%,ftype_type%)
+ $ftypeloadstr%=""
+ PROCupdateicon(filetypes%,ftype_load%)
+ $ftypeexecstr%=""
+ PROCupdateicon(filetypes%,ftype_exec%)
+ ENDPROC                        :REM sets editingtype% to 0 and clear icons so editing won't work!
+ENDIF
+:
+PROCdeselectalltypes
+PROCselecttype(editingtype%)
+$ftypestr%=FNreadtype(editingtype%)
+PROCupdateicon(filetypes%,ftype_type%)
+:
+SYS"ImageDFS_ReadFiletypeMap",editingtype% TO ,loadmask,loadaddr,execmask,execaddr,filetype
+loadstr$=RIGHT$("000000"+STR$~loadmask,6)
+loadaddr$=RIGHT$("000000"+STR$~loadaddr,6)
+execstr$=RIGHT$("000000"+STR$~execmask,6)
+execaddr$=RIGHT$("000000"+STR$~execaddr,6)
+FOR change=1 TO LENloadstr$
+ IF MID$(loadstr$,change,1)<>"F" THEN MID$(loadstr$,change,1)="x" ELSE MID$(loadstr$,change,1)=MID$(loadaddr$,change,1)
+ IF MID$(execstr$,change,1)<>"F" THEN MID$(execstr$,change,1)="x" ELSE MID$(execstr$,change,1)=MID$(execaddr$,change,1)
+NEXT
+:
+$ftypeloadstr%=loadstr$
+PROCupdateicon(filetypes%,ftype_load%)
+$ftypeexecstr%=execstr$
+PROCupdateicon(filetypes%,ftype_exec%)
+ENDPROC
+
+
+DEF PROCmenuwarning             :REM should only occur for 'New filetype' menu
+sel1%=block%!32
+:
+CASE menuopen% OF
+ WHEN typesmenu% : CASE sel1% OF
+  WHEN 0   : $newtypeaddr%=FNreadtype(currenttype%)     :REM  'Type 'xxx' > Rename >'  selected
+             SYS"Wimp_CreateSubMenu",,block%!20,block%!24,block%!28
+  WHEN 3   : $newtypeaddr%=""                           :REM  'New filetype >'  selected
+             SYS"Wimp_CreateSubMenu",,block%!20,block%!24,block%!28
+ ENDCASE
+ENDCASE
+ENDPROC
+
+
+DEF PROCrenametype($newtypeaddr%)  :REM currenttype% has the type to change
+SYS"OS_FSControl",31,$newtypeaddr% TO ,,filetype
+:
+SYS"ImageDFS_ReadFiletypeMap",currenttype% TO ,loadmask,loadaddr,execmask,execaddr
+SYS"ImageDFS_AddFiletypeMap",currenttype% OR (%1<<31),loadmask,loadaddr,execmask,execaddr,filetype
+:
+IF currenttype%=editingtype% THEN $ftypestr%=FNreadtype(editingtype%):PROCupdateicon(filetypes%,ftype_type%)
+:
+maxy=currenttype%-1
+maxy=maxy*40
+maxy=maxy+6
+SYS"Wimp_ForceRedraw",ARCtypes%,0,-maxy-40,162,-maxy
+ENDPROC
+
+
+DEF PROCnewtype($newtypeaddr%)  :REM currenttype% is the type below new type position (or 0!!!)
+SYS"OS_FSControl",31,$newtypeaddr% TO ,,filetype
+SYS"ImageDFS_AddFiletypeMap",currenttype%,0,0,0,0,filetype TO currenttype% :REM <- ensures not 0
+:
+PROCsettypeextent
+maxy=currenttype%-1
+maxy=maxy*40
+maxy=maxy+6
+SYS"Wimp_ForceRedraw",ARCtypes%,0,-maxy-&FFFF,162,-maxy
+:
+PROCedittype(currenttype%)
+ENDPROC
+
+
+DEF PROCremovetypes                             :REM deletes selected types
+IF numselected%=0 THEN VDU7:ENDPROC
+:
+type=FNfindselected(0):firsttype=type
+REPEAT
+ IF type=editingtype% THEN PROCedittype(0)      :REM clears editing icons
+ PROCdeselecttype(type)
+ SYS"ImageDFS_RemoveFiletypeMap",type:PROCshufflelistback(type)
+ type-=1:type=FNfindselected(type)              :REM still must sub 1 from type, as one removed!
+UNTILtype=0
+PROCsettypeextent
+:
+maxy=firsttype-1
+maxy=maxy*40
+maxy=maxy+2
+SYS"Wimp_ForceRedraw",ARCtypes%,0,-maxy-&FFFF,162,-maxy
+ENDPROC
+
+
+DEF PROCshufflelistback(type)   :REM shuffle selected list back one place
+SYS"ImageDFS_ReadFiletypeMap",-1 TO entries%
+REPEAT
+ selectedtypes%?type=selectedtypes%?(type+1)    :REM (max moved back is 1023+1=1024, so is ok)
+ type+=1
+UNTILtype>entries%
+ENDPROC
+
+
+DEF PROCupdatetype              :REM called when return pressed in load/exec icons
+IF editingtype%=FALSE THEN ENDPROC
+loadmask$="FFFFFF"
+loadaddr$="000000"
+execmask$="FFFFFF"
+execaddr$="000000"
+:
+loadstr$=RIGHT$("000000"+$ftypeloadstr%,6)
+execstr$=RIGHT$("000000"+$ftypeexecstr%,6)
+FOR change=1 TO 6
+ IF MID$(loadstr$,change,1)="x" THEN MID$(loadmask$,change,1)="0":MID$(loadaddr$,change,1)="0" ELSE MID$(loadaddr$,change,1)=MID$(loadstr$,change,1)
+ IF MID$(execstr$,change,1)="x" THEN MID$(execmask$,change,1)="0":MID$(execaddr$,change,1)="0" ELSE MID$(execaddr$,change,1)=MID$(execstr$,change,1)
+NEXT
+:
+loadmask=EVAL("&"+loadmask$)
+loadaddr=EVAL("&"+loadaddr$)
+execmask=EVAL("&"+execmask$)
+execaddr=EVAL("&"+execaddr$)
+:
+SYS"ImageDFS_ReadFiletypeMap",editingtype% TO ,,,,,filetype
+SYS"ImageDFS_AddFiletypeMap",editingtype% OR (%1<<31),loadmask,loadaddr,execmask,execaddr,filetype
+ENDPROC
+
+
+DEF PROCmovetype(type,newtype)
+IF type=newtype THEN ENDPROC
+:
+IF selectedtypes%?type<>0 THEN PROCdeselecttype(type):PROCselecttype(newtype):REM b4 edit check
+IF type=currenttype% THEN $typei_numstr%=STR$newtype:currenttype%=newtype    :REM typeinfo correct
+IF type=editingtype% THEN PROCedittype(FALSE)
+:
+SYS"ImageDFS_ReadFiletypeMap",type TO ,loadmask,loadaddr,execmask,execaddr,filetype
+IF newtype>type THEN newtype+=1 :REM otherwise it won't skip the next one!
+SYS"ImageDFS_AddFiletypeMap",newtype,loadmask,loadaddr,execmask,execaddr,filetype TO newtype
+IF type>newtype THEN type+=1
+SYS"ImageDFS_RemoveFiletypeMap",type
+IF type>newtype THEN type=newtype
+:
+maxy=type-1
+maxy=maxy*40
+maxy=maxy+6
+SYS"Wimp_ForceRedraw",ARCtypes%,0,-maxy-&FFFF,162,-maxy
+ENDPROC
+
+
+DEF PROCsavefiletypes
+SYS"ImageDFS_ReadFiletypeMap",-1 TO entries%
+!block%=entries%
+OSCLI"Save <ImageDFS$Dir>.Options.Filetypes "+STR$~block%+"+4"
+IF entries%=0 THEN ENDPROC
+:
+file%=OPENUP("<ImageDFS$Dir>.Options.Filetypes")
+PTR#file%=EXT#file%
+FOR type=1 TO entries%
+ SYS"ImageDFS_ReadFiletypeMap",type TO ,block%!0,block%!4,block%!8,block%!12,block%!16
+ SYS"OS_GBPB",2,file%,block%,20
+NEXT
+CLOSE#file%
+ENDPROC
+
+
+DEF PROCselecttype(type%)
+SYS"ImageDFS_ReadFiletypeMap",-1 TO entries%
+IF type%<1 OR type%>entries% THEN ENDPROC
+IF selectedtypes%?type%<>&FF THEN numselected%+=1:selectedtypes%?type%=&FF ELSE ENDPROC
+PROCchangeselect(type%)
+ENDPROC
+
+
+DEF PROCchangeselect(type%)     :REM super-fast toggling on/off of type selection
+maxy=type%-1
+maxy=maxy*40
+maxy=maxy
+:
+block%!0=ARCtypes%
+block%!4=0
+block%!8=-maxy-42
+block%!12=162
+block%!16=-maxy
+SYS"Wimp_UpdateWindow",,block% TO more%
+:
+SYS"OS_ReadModeVariable",-1,3 TO ,,colours%
+:
+gfx_x%=block%!4-block%!20    :REM min work x = visible min x - scrolled x  (NR x doesn't scroll)
+gfx_y%=block%!16-block%!24   :REM max work y = visible max y - scrolled y
+gfx_x%+=8:gfx_y%-=8+(type%-1)*40  :REM align correctly for text printin
+WHILE more%
+ IF colours%=63 THEN SYS"Wimp_SetColour",0 OR %1000000 ELSE SYS"Wimp_SetColour",7 OR %110000
+ RECTANGLE FILL gfx_x%-8,gfx_y%+4,162,-38
+ SYS "Wimp_GetRectangle",,block% TO more%
+ENDWHILE
+ENDPROC
+
+
+DEF FNfindselected(type%)       :REM starting position in list on entry (or 0 to start at first)
+IF numselected%=0 THEN =FALSE
+REPEAT
+ type%+=1
+UNTIL selectedtypes%?type%<>0 OR type%>1023
+IF type%>1023 THEN =FALSE       :REM max 1023 types
+:
+=type%                          :REM if 0 on exit, no more types to search for
+
+
+DEF PROCdeselecttype(type%)
+IF selectedtypes%?type%=&FF THEN numselected%-=1:selectedtypes%?type%=0 ELSE ENDPROC
+PROCchangeselect(type%)
+ENDPROC
+
+
+DEF PROCdeselectalltypes
+SYS"ImageDFS_ReadFiletypeMap",-1TO type:REPEAT:PROCdeselecttype(type):type-=1:UNTILtype=0
+ENDPROC
+
+
+DEF PROCselectalltypes
+SYS"ImageDFS_ReadFiletypeMap",-1TO type:REPEAT:PROCselecttype(type):type-=1:UNTILtype=0
+ENDPROC
+
+
+REM  help...
+
+
+DEF PROChelprequest(window%,icon%)
+IF messages%=0 THEN PROCinitmessages
+token$=""
+CASE window% OF
+ WHEN driveselect% : token$="DS"+RIGHT$("0"+STR$icon%,2)
+ WHEN options%     : token$="OP"+RIGHT$("0"+STR$icon%,2)
+ WHEN optwindow%   : token$="OW"+RIGHT$("0"+STR$icon%,2)
+ WHEN filetypes%   : token$="FT"+RIGHT$("0"+STR$icon%,2)
+ WHEN ARCtypes%    : token$="AT"+RIGHT$("0"+STR$icon%,2)
+ WHEN infobox%              : token$="IB"+RIGHT$("0"+STR$icon%,2)
+ WHEN imagehandling%        : token$="IH"+RIGHT$("0"+STR$icon%,2)
+ WHEN xfer_send%,xfer_pane% : token$="XF"+RIGHT$("0"+STR$icon%,2)
+ WHEN readfloppy%           : token$="RF"+RIGHT$("0"+STR$icon%,2)
+ WHEN typeinfo%             : token$="TI"+RIGHT$("0"+STR$icon%,2)
+ WHEN -2 : CASE icon% OF
+  WHEN iconbaricon% : token$="App"
+ ENDCASE
+OTHERWISE
+ SYS"Wimp_GetMenuState",1,block%+256,window%,icon%
+ sel1%=!(block%+256+0):sel2%=!(block%+256+4)
+ sel3%=!(block%+256+8):sel4%=!(block%+256+12)
+ CASE menuopen% OF
+  WHEN iconbarmenu% : token$="MnIB"
+  WHEN typesmenu% : token$="MnTM"
+ ENDCASE
+ :
+ IF token$<>"" THEN
+  sel%=256
+  REPEAT
+   IF block%!sel%<>-1 THEN token$+="."+RIGHT$("0"+STR$block%!sel%,2):sel%+=4
+  UNTILblock%!sel%=-1
+ ENDIF
+ENDCASE
+:
+IF token$<>"" THEN
+ SYS "MessageTrans_Lookup",messages%,token$,block%+20,256-20 TO ;flags%
+ IF (flags% AND 1)=0 THEN
+  SWAP block%!8,block%!12
+  block%!16=&503
+  block%!0=256
+  SYS "Wimp_SendMessage",17,block%,block%!4
+ ENDIF
+ENDIF
+ENDPROC
+
+
+DEF FNfindtask(taskname$)               :REM **can only check 1 task at a time now**
+LOCAL taskbuffer,call,gottask
+DIM taskbuffer 30
+call=0
+gottask=FALSE
+REPEAT
+ SYS"TaskManager_EnumerateTasks",call,taskbuffer,30 TO call
+ IF call>0 THEN IF FNblocktostring(taskbuffer!4)=taskname$ gottask=TRUE
+UNTILcall<0 OR gottask
+IF NOT gottask THEN =0
+=!taskbuffer
+
+
+DEF PROCinitmessages
+LOCAL bufferlen%,flags%,buffer%
+SYS "MessageTrans_FileInfo",,"<ImageDFS$Dir>.Resources.Messages" TO flags%,,bufferlen%
+IF (flags% AND 1)=1 THEN buffer%=0 ELSE DIM buffer% bufferlen%
+messages%=FNclaimRMA(16+LEN"<ImageDFS$Dir>.Resources.Messages"+1)
+$messages%=STRING$(16,CHR$0)
+$(messages%+16)="<ImageDFS$Dir>.Resources.Messages"
+SYS "MessageTrans_OpenFile",messages%,messages%+16,buffer%
+ENDPROC
+
+
+DEF PROCclosemessages
+SYS "MessageTrans_CloseFile",messages%
+PROCclearRMA(messages%)                 :REM should we release messages%?
+ENDPROC
+
+
+DEF FNclaimRMA(size%)
+SYS "OS_Module",6,,,size% TO ,,ptr%
+=ptr%
+
+
+DEF PROCclearRMA(addr%)
+SYS "OS_Module",7,,addr%
+ENDPROC

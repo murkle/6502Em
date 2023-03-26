@@ -1,0 +1,83 @@
+REM !TransReg v1.00
+REM Registration transfer for ImageDFS
+REM the impossible is possible tonight
+REM (c) S.Harrison 2014
+:
+ON ERROR REPORT:PRINT " at line ";ERL:END
+DIM code% 1024
+PROCassm
+MODE MODE
+:
+*.
+INPUT''"Enter directory path containing NEW, unregistered, !ImageDFS application"'"(use @ for current dir, RAM:$ for ramdisc, ADFS:0.$ for drive 0, etc.): "newidfs$
+new=OPENIN(newidfs$+".!ImageDFS.ImageDFS"):IF new<>0 newlen=EXT#new:CLOSE#new
+IF new=0 ERROR 255,newidfs$+".!ImageDFS not found"
+:
+DIM newmod newlen
+OSCLI"Load "+newidfs$+".!ImageDFS.ImageDFS "+STR$~newmod
+newver=9+newmod+newmod!20:temp=newver?4
+newver?4=13:ver=EVAL$newver
+newver?4=temp:temp=movereg
+IF ver<0.9 ERROR 255,"New ImageDFS module version is incorrect"
+:
+INPUT'"Enter directory path containing your ORIGINAL, registered, !ImageDFS application: "oldidfs$
+IF newidfs$=oldidfs$ ERROR 255,"Cannot have same path for old and new applications!"
+:
+old=OPENIN(oldidfs$+".!ImageDFS.ImageDFS"):IF old<>0 oldlen=EXT#old:CLOSE#old
+IF old=0 ERROR 255,oldidfs$+".!ImageDFS not found"
+serial=OPENIN(oldidfs$+".!ImageDFS.Resources.SerialNo"):IF serial<>0 seriallen=EXT#serial:CLOSE#serial
+IF serial=0 ERROR 255,oldidfs$+".!ImageDFS serial number not found"
+:
+DIM serialno seriallen
+OSCLI"Load "+oldidfs$+".!ImageDFS.Resources.SerialNo "+STR$~serialno
+DIM oldmod oldlen
+OSCLI"Load "+oldidfs$+".!ImageDFS.ImageDFS "+STR$~oldmod
+:
+A%=oldmod
+B%=newmod
+oldver=9+oldmod+oldmod!20
+oldver?4=13:temp!48=0
+oldver=EVAL$oldver
+IF oldver<0.7 ERROR 255,"Old ImageDFS module version is incorrect"
+IF ver<oldver ERROR 255,"New ImageDFS module is too old!"
+PRINT''"*** Transfering registration '";:SYS"OS_Write0",serialno
+PRINT"' from ImageDFS v";oldver;" to ImageDFS v";ver;" ***"
+CALL movereg
+:
+PRINT ''"Registration transferred ok, save new module to complete process (Y/N)?";:key$=GET$:PRINT key$
+:
+IF key$="Y" OR key$="y" THEN
+  OSCLI"Save "+newidfs$+".!ImageDFS.ImageDFS "+STR$~newmod+"+"+STR$~newlen
+  OSCLI"Settype "+newidfs$+".!ImageDFS.ImageDFS Module"
+  OSCLI"Copy "+oldidfs$+".!ImageDFS.Resources.SerialNo "+newidfs$+".!ImageDFS.Resources.SerialNo FS~C~V"
+  :
+  PRINT ''"Transfer complete and saved OK"
+  END
+ELSE
+  ERROR 255,"Operation aborted"
+ENDIF
+END
+
+
+DEF PROCassm
+FOR opt%=0 TO 3 STEP 3
+P%=code%
+[OPT opt%
+.movereg
+STMFD R13!,{R0-R3}
+LDR R2,[R0,#16]
+LDR R3,[R1,#16]
+ADD R0,R0,R2
+ADD R1,R1,R3
+.moveregloop
+LDRB R2,[R0]
+STRB R2,[R1]
+TEQ  R2,#0
+ADDNE R0,R0,#1
+ADDNE R1,R1,#1
+BNE moveregloop
+LDMFD R13!,{R0-R3}
+MOV PC,R14
+]
+NEXT
+ENDPROC

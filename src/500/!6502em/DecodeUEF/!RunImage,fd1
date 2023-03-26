@@ -1,0 +1,219 @@
+REM > DecodeUEF
+REM Plugin for 6502Em
+REM By Michael Borcherds
+REM version 0.01 (6th June 2004)
+SYS "Wimp_Initialise",200,&4B534154,"DecodeUEF"
+T%=0:F%=0
+ONERROR PROCerror(REPORT$+" at line "+STR$ERL)
+DIM buffer 200*1024, cat 512
+!buffer=0:SYS "OS_ReadVarVal","6502Em$TempDir",buffer,255 TO ,,len%:buffer?len%=13:TempDir$=$buffer
+
+
+SYS "OS_GetEnv" TO A$
+IF RIGHT$(A$,1)=" " THEN
+I%=0
+REPEATI%+=1:UNTILMID$(A$,LENA$-I%,1)<>" "
+A$=LEFT$(A$,LENA$-I%)
+ENDIF
+IF RIGHT$(A$,1)=CHR$34 THEN A$=LEFT$(A$,LENA$-1)
+IF LEFT$(A$,1)=CHR$34 THEN A$=RIGHT$(A$,LENA$-1)
+I%=0
+REPEATI%+=1:UNTILMID$(A$,LENA$-I%,1)=" " OR I%=LENA$
+F$=RIGHT$(A$,I%)
+
+T%=-1:path$="<6502Em$TempDir>"+".!"+FNstripUEFGZ(FNstripleaf(F$))
+OSCLI"CDIR "+path$
+T$=path$+".Tape"
+F%=OPENINF$
+byte1%=BGET#F%:byte2%=BGET#F%:PTR#F%=0
+IF (byte1%=&1F AND byte2%=&8B) THEN
+REMPROCerror("UEF file is compressed: please use gzip or SparkFS to uncompress")
+CLOSE#F%:F%=0
+SYS "OS_CLI","WimpTask Copy "+F$+" <6502Em$TempDir>.scruef/gz ~CF~N~V"
+SYS "OS_CLI","WimpTask gzip:gzip -f -d "+FNswapdotslash(TempDir$+".scruef/gz")
+REMSYS "XOS_CLI","WimpTask Wipe <6502Em$TempDir>.scruef/gz FR~C~V"
+F$="<6502Em$TempDir>.scruef"
+F%=OPENINF$
+ENDIF
+runchain%=-1
+H$=LEFT$(GET$#F%,9)
+IF H$<>"UEF File!" THEN PROCerror("Message from DecodeUEF: Not valid UEF File")
+PTR#F%=10
+V%=BGET#F%
+V%+=(BGET#F%)<<8
+REMPRINT"Version ";V%
+REPEAT
+chunk%=BGET#F%
+chunk%+=(BGET#F%)<<8
+L%=BGET#F%:L%+=(BGET#F%)<<8:L%+=(BGET#F%)<<16:L%+=(BGET#F%)<<24
+REMPRINT~chunk%,L%
+ptr%=PTR#F%
+CASE chunk% OF
+WHEN &101,&102
+PROCerror("Unsupported Chunk "+STR$~chunk)
+WHEN &100
+zero%=-1
+
+FORI%=0 TO L%-1
+A%=BGET#F%
+IF A%=0 AND zero%=-1 THEN zero%=I% : REM end of filename
+BPUT#T%,A%
+IF A%=&FF BPUT#T%,A% : REM repeat data &FF
+NEXT
+PTR#F%=ptr%+zero%+9:block%=BGET#F%:block%+=(BGET#F%)<<8
+IF runchain%=-1 AND block%=0 AND zero%<>-1 THEN
+ PTR#F%=ptr%+zero%+5 : REM exec address
+ exec%=BGET#F%:exec%+=(BGET#F%)<<8
+ IF exec%=&801F OR exec%=&8023 OR exec%=&802B THEN runchain%=1 ELSE runchain%=2
+ PTR#F%=ptr%+zero%+20
+ IF BGET#F%=&0D THEN IF BGET#F%=&00 THEN runchain%=1:REM *probably* BASIC
+ENDIF
+
+WHEN &110,&111
+IF T%=-1 T%=OPENOUTT$ : BPUT#T%,"BBC Tapefile"
+BPUT#T%,&FF
+BPUT#T%,&04
+BPUT#T%,&FF
+BPUT#T%,&00
+WHEN &200
+PTR#F%=ptr%+5
+dfs%=BGET#F%
+CASE dfs% OF
+WHEN 0 : REM unspecified
+WHEN 1 : REM Acorn 8271 DFS
+WHEN 2 : REM Watford DFS 62
+WHEN 3 : PROCerror("Unsupported disc format (ADFS)")
+WHEN 4 : REM Acorn 1770 DFS
+WHEN 5 : PROCerror("Unsupported disc format (Solidisk)")
+WHEN 6 : PROCerror("Unsupported disc format (Opus DDOS)")
+ENDCASE
+WHEN &201
+
+boot%=FALSE
+ignore%=TRUE
+double_step%=FALSE
+drive%=0
+side%=0
+
+path$=TempDir$+".!"+LEFT$(FNstripleaf(FNstripBBCB22(F$)),9)
+OSCLI"CDIR "+path$
+
+location%=0
+PROCdiscop(512,cat)
+
+opt%=((cat?&106)>>4) AND %11
+
+P%=cat
+title$=FNget
+REMPRINT"Title ";title$'
+*REPORT title$
+FOR J%=1 TO 31
+dir$=CHR$(P%?7 AND &7F)
+load%=P%!&100 AND &FFFF
+exec%=P%!&102 AND &FFFF
+length%=P%!&104 AND &FFFF
+location%=((P%?&106 AND 3) << 8) + P%?&107
+file$=FNget
+IF FNupper(file$)="!BOOT" THEN file$="!!Boot":boot%=TRUE
+IF file$<>"" THEN
+*REPORT dir$,file$,~load%,~exec%,length%,location%
+PROCdiscop(length%,buffer)
+IF dir$<>"$" THEN
+OSCLI "CDir "+path$+"."+dir$
+OSCLI"SAVE "+path$+"."+dir$+"."+file$+" "+STR$~buffer+" +"+STR$~length%+" "+STR$~exec%+" "+STR$~load%
+ELSE
+OSCLI"SAVE "+path$+"."+file$+" "+STR$~buffer+" +"+STR$~length%+" "+STR$~exec%+" "+STR$~load%
+ENDIF
+ENDIF
+NEXT
+
+run$=path$+".!Run"
+H%=OPENOUT run$
+BPUT#H%,"BBC Script"
+CASE opt% OF
+WHEN 2:BPUT#H%,"*Run !!Boot"
+WHEN 3:BPUT#H%,"*Exec !!Boot"
+OTHERWISE
+IF boot% THEN BPUT#H%,"*Exec !!Boot" ELSE BPUT#H%,"*Cat"
+ENDCASE
+CLOSE#H%:H%=0
+OSCLI"SETTYPE "+run$+" BBC"
+OSCLI"Filer_Run "+path$
+
+ENDCASE
+PTR#F%=ptr%+L%
+UNTILEOF#F%
+CLOSE#F%:F%=0
+IF T%<>-1 THEN
+  CLOSE#T%:T%=0
+  OSCLI"SETTYPE "+T$+" BBC"
+  Trun$=path$+".!Run"
+  T%=OPENOUTTrun$
+  BPUT#T%,"BBC Script"
+  BPUT#T%,"Tapefile Tape"
+  IF runchain%=2 THEN BPUT#T%,"OSCLI ""TAPE"" : *RUN """"" ELSE BPUT#T%,"OSCLI ""TAPE"" : CHAIN """""
+  CLOSE#T%:T%=0
+  OSCLI"SETTYPE "+Trun$+" BBC"
+  OSCLI"Filer_Run "+path$
+ENDIF
+
+
+END
+DEFFNstripleaf(A$)
+LOCAL I%
+I%=LENA$+1
+REPEATI%-=1:UNTIL MID$(A$,I%,1)="." OR MID$(A$,I%,1)=":"
+=RIGHT$(A$,LENA$-I%)
+
+DEFFNstripUEFGZ(A$)
+IF FNupper(RIGHT$(A$,3))="/GZ" AND LENA$>3 THEN =LEFT$(A$,LENA$-3)
+IF FNupper(RIGHT$(A$,4))="/UEF" AND LENA$>4 THEN =LEFT$(A$,LENA$-4)
+=A$
+DEFFNupper(A$)
+LOCALI%,B$
+FORI%=1 TO LENA$
+IF MID$(A$,I%,1)>="a" AND MID$(A$,I%,1)<="z" THEN B$=B$+CHR$(ASCMID$(A$,I%,1)-32) ELSE B$=B$+MID$(A$,I%,1)
+NEXT
+=B$
+
+DEFPROCerror(E$)
+ONERROR OFF
+IF F%>0 CLOSE#F%:F%=0
+IF T%>0 CLOSE#T%:T%=0
+IF H%>0 CLOSE#H%:H%=0
+ERROR 0,"Message from DecodeUEF: "+E$
+ENDPROC
+
+DEFFNswapdotslash(A$)
+LOCALI%
+FOR I%=0 TO LENA$-1
+IF MID$(A$,I%,1)="." THEN
+MID$(A$,I%,1)="/"
+ELSE
+IF MID$(A$,I%,1)="/" THENMID$(A$,I%,1)="."
+ENDIF
+NEXT
+=A$
+
+DEFPROCdiscop(length%,buffer)
+LOCAL P%,track%,sector%,off%
+sector%=location% MOD 10
+track%=location% DIV 10
+WHILE length%>0
+length%=length%-256
+IF double_step% THEN new_loc%=(track%*20)+sector% ELSE new_loc%=(track%*10)+sector%
+SYS "OS_GBPB",3,F%,buffer+off%,256,new_loc%*256+side%+ptr%
+off%+=256
+sector%+=1
+IF sector%=10 THEN sector%=0 : track%+=1
+ENDWHILE
+ENDPROC
+
+DEFFNget
+LOCAL A$,I%
+FOR I%=0 TO 6
+IF (P%?I%>32 OR P%?I%=31) AND P%?I%<127 THEN A$=A$+CHR$(P%?I% AND &7F) ELSE I%=8
+NEXT
+P%+=8
+=A$
+

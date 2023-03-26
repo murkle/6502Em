@@ -1,0 +1,10 @@
+DIM mode0table 256*4
+pal%=%0111
+FOR I%=0 TO 255
+A%=0
+FOR J%=0 TO 7
+IF (I% AND (1<<(7-J%)))<>0 THEN A%=A% OR (pal%<<4*J%)
+NEXT
+mode0table!(I%*4)=A%
+NEXT
+OSCLI "SAVE <6502Em$Dir>.Tables.mode0tab "+STR$~mode0table+" +"+STR$~(256*4)
